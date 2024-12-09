@@ -17,6 +17,7 @@ sys.path.append(str(directory.parent.parent))
 sys.path.append(str(directory.parent.parent.parent))
 __package__ = directory.name
 
+#将字典转换为对象
 class Dict2Class(object):
 
     def __init__(self, dict):
@@ -27,7 +28,7 @@ class ClientInterface(object):
 
     def __init__(self, args, record=True):
         # env args
-        self.args = Dict2Class(args) if isinstance(args, dict) else args
+        self.args = Dict2Class(args) if isinstance(args, dict) else args # 这句之后，后面就可以用self.args.xxx来访问参数了
         self.discrete_action_num = 4
         self.action_space = gym.spaces.Discrete(self.discrete_action_num)
 
@@ -35,7 +36,7 @@ class ClientInterface(object):
         self._context = zmq.Context()
         self._socket = self._context.socket(zmq.REQ)
         print("connecting to interaction gym...")
-        url = ':'.join(["tcp://localhost", str(self.args.port)])
+        url = ':'.join(["tcp://localhost", str(self.args.port)]) # "tcp://localhost:5561”
         self._socket.connect(url)
         
         # simulator statue flags

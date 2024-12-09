@@ -17,3 +17,14 @@ python dreamerv3/train.py --logdir ~/logdir/$(date "+%Y%m%d-%H%M%S") --configs c
 看图：
 python plot_interaction_training.py --indirs /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/ISIM_INTERACTION_large_scale --outdir /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/ISIM_INTERACTION_large_scale
 
+
+
+
+python train.py --logdir /home/zb/02_PIWM/Dreamer_Inter/python/interaction_dreamerv3/dreamerv3/embodied/run --configs interaction_prediction --task `interaction_prediction
+python train.py --logdir /home/zb/02_PIWM/Dreamer_Inter/python/interaction_dreamerv3/dreamerv3 --configs interaction_recon --task interaction_recon
+
+python train.py --logdir /home/zb/02_PIWM/Dreamer_Inter/python/interaction_dreamerv3/dreamerv3 --configs interaction_recon --task interaction_recon
+
+python train.py --logdir /home/zb/02_PIWM/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/predict/test --configs interaction_prediction --task interaction_prediction
+
+tensorboard --logdir /home/zb/02_PIWM/Dreamer_Inter/python/interaction_dreamerv3

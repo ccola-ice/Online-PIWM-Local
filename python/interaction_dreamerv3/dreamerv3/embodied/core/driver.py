@@ -57,31 +57,32 @@ class Driver:
 
   def _step(self, policy, step, episode, predictor=None):
     # reset or step envs (since acts contains both 'action' and 'reset', and 'prediction' for i-sim) 
-    assert all(len(v) == len(self._envs) for v in self._acts.values())
-    acts = {k: v for k, v in self._acts.items() if not k.startswith('log_')}
+    # print(f'self._acts: {self._acts}') 
+    # print(f'self._envs: {self._envs}')
+    assert all(len(v) == len(self._envs) for v in self._acts.values()) # 对于self._acts中的每一个value，都要保证其长度与self._envs相同，不相同就报出异常
+    acts = {k: v for k, v in self._acts.items() if not k.startswith('log_')}  # 从self._acts中取出所有不以'log_'开头的键值对
     # step each env, and get new observation
     # step_time_1 = time.time()
-    obs = self._envs.step(acts)
+    obs = self._envs.step(acts) # 对于self._envs中的每一个env，都调用其step方法，传入acts作为参数
     # step_time_2 = time.time()
-    obs = {k: convert(v) for k, v in obs.items()} # convert data type
-    assert all(len(x) == len(self._envs) for x in obs.values()), obs
+    obs = {k: convert(v) for k, v in obs.items()} # 获取obs字典的所有键值对，遍历他们，k不变，将v转换成convert(v)
+    assert all(len(x) == len(self._envs) for x in obs.values()), obs # 对于obs中的每一个value，都要保证其长度与self._envs相同，不相同就报出异常
 
     # get new actions from policy, 
-
     # NOTE: for isim env, if state_frame == 'global', then the observation gained from env.step() is in global frame 
     # (to make prediction data), then it will transfered into ego frame for model learning. yet if we want to use this observation 
     # directly with policy and world model, it should be converted into ego local frame first
-    obs_for_infer = copy.deepcopy(obs)
+    obs_for_infer = copy.deepcopy(obs) # 创建一个obs的深拷贝并赋值给obs_for_infer
     if self._envs.state_frame == 'global':
-      for key in obs_for_infer.keys():
-        for i in range(len(self._envs)): 
+      for key in obs_for_infer.keys(): # 遍历obs_for_infer的key
+        for i in range(len(self._envs)):  #只有一个env，即”interaction"
           state = []
           # ego current position and heading
-          ego_pos = obs['ego'][i][-1][2:4]
-          ego_heading = obs['ego'][i][-1][4]
+          ego_pos = obs['ego'][i][-1][2:4] # 从obs中获取'ego'键对应的值
+          ego_heading = obs['ego'][i][-1][4] 
           # for the vehicles state that are in the scene
-          condition = [key.startswith('ego'), key.startswith('npc_') and obs_for_infer['mask_npc'][i][int(key[-1])-1], key.startswith('other_') and obs_for_infer['mask_other'][i][int(key[-1])-1]]
-          if sum(condition) > 0:
+          condition = [key.startswith('ego'), key.startswith('npc_') and obs_for_infer['mask_npc'][i][int(key[-1])-1], key.startswith('other_') and obs_for_infer['mask_other'][i][int(key[-1])-1]] # [False, True, False]                                                         
+          if sum(condition) > 0: # sum(condition) = 1
             # convert position from global frame to ego frame
             localized_traj_state = localize_vector_transform_list(ego_pos, ego_heading, obs_for_infer[key][i])
             state.append(localized_traj_state)
@@ -101,7 +102,7 @@ class Driver:
       mask = 1 - obs['is_last']
       acts = {k: v * self._expand(mask, len(v.shape)) for k, v in acts.items()}
     # reset envs on next _step
-    acts['reset'] = obs['is_last'].copy()
+    acts['reset'] = obs['is_last'].copy() # array([False])
 
     # pred_start = time.time()
     # make predictions of surrounding cars if necessary

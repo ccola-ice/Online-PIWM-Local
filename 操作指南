@@ -28,11 +28,45 @@ cd interaction_gym/
 export DISPLAY=:0
 
 5. 仿真环境的测试与运行
-数据可视化：python main_visualize_data.py "DR_USA_Intersection_EP0"
+数据可视化：python main_visualize_data.py "DR_USA_Intersection_EP0"///////buyongguan
 
 算法环境（docker外部环境）启动：
 1）python main.py
 仿真环境（docker内部客服端）启动：
 2）python interaction_env.py --port #port num# 
 "DR_USA_Intersection_EP0"
+
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 interrl:latest bash
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym for TrajGen$:/home/developer/workspace/interaction-dataset-master -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 isim:latest bash
+
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 isim:latest bash
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym for TrajGen$:/home/developer/workspace/interaction-dataset-master -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 isim:latest bash
+
+
+#可行：
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 isim:latest bash
+
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 interrl:latest bash
+
+
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 interrl:latest bash
+
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym for TrajGen$:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 isim:latest bash
+
+
+docker run -it -e DISPLAY -p 5562-5566:5562-5566 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim62 interrl:latest bash
+
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 interrl:latest bash
+
+
+docker run -it -e DISPLAY -p 5562-5566:5562-5566 -v /home/zb/02_PIWM/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim62 interrl:latest bash
+
 

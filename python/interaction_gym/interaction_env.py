@@ -114,7 +114,6 @@ class InteractionEnv:
         return gt_csv_index
 
     def scenario_init(self):
-
         # clear variables
         self._ego_vehicle_dict.clear()
         self._ego_route_dict.clear()

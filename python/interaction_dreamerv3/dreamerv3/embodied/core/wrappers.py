@@ -96,9 +96,9 @@ class NormalizeAction(base.Wrapper):
 class OneHotAction(base.Wrapper):
 
   def __init__(self, env, key='action'):
-    super().__init__(env)
-    self._count = int(env.act_space[key].high)
-    self._key = key
+    super().__init__(env) # 调用父类的构造函数
+    self._count = int(env.act_space[key].high) # self._count = env.act_space[action].high = 4 by default
+    self._key = key # self._key = key = 'action'
 
   @functools.cached_property
   def act_space(self):
@@ -127,14 +127,17 @@ class OneHotAction(base.Wrapper):
 class ExpandScalars(base.Wrapper):
 
   def __init__(self, env):
-    super().__init__(env)
+    super().__init__(env) # 调用父类的构造函数
+    
     self._obs_expanded = []
     self._obs_space = {}
-    for key, space in self.env.obs_space.items():
+    for key, space in self.env.obs_space.items(): #遍历env.obs_space.items()，key是obs_space的key，space是obs_space的value
       if space.shape == () and key != 'reward' and not space.discrete:
         space = spacelib.Space(space.dtype, (1,), space.low, space.high)
         self._obs_expanded.append(key)
       self._obs_space[key] = space
+    #for循环遍历观测空间的所有键值对，如果value的shape是()，且key不是reward，且value不是离散的，那么将value的shape变为(1,)，并将key加入到self._obs_expanded中
+    
     self._act_expanded = []
     self._act_space = {}
     for key, space in self.env.act_space.items():
@@ -142,7 +145,8 @@ class ExpandScalars(base.Wrapper):
         space = spacelib.Space(space.dtype, (1,), space.low, space.high)
         self._act_expanded.append(key)
       self._act_space[key] = space
-
+    #for循环遍历动作空间的所有键值对，如果value的shape是()，且value不是离散的，那么将value的shape变为(1,)，并将key加入到self._act_expanded中
+      
   @functools.cached_property
   def obs_space(self):
     return self._obs_space

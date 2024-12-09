@@ -2,7 +2,7 @@ defaults:
 
   seed: 0
   method: name
-  task: dummy_disc
+  task: dummy_disc 
   logdir: /dev/null
   replay: uniform
   replay_size: 1e6
@@ -46,7 +46,8 @@ defaults:
     from_checkpoint: ''
     sync_every: 10
     # actor_addr: 'tcp://127.0.0.1:5551'
-    actor_addr: 'ipc:///tmp/5551'
+    actor_addr: 'ipc:///tmp/5561' 
+    # actor_addr: 'ipc:///tmp/5551'
     actor_batch: 32
 
   envs: {amount: 4, parallel: process, length: 0, reset: True, restart: True, discretize: 0, checks: False}
@@ -57,7 +58,7 @@ defaults:
     minecraft: {size: [64, 64], break_speed: 100.0}
     dmc: {size: [64, 64], repeat: 2, camera: -1}
     loconav: {size: [64, 64], repeat: 2, camera: -1}
-    interaction: {map_name: DR_USA_Intersection_EP0, load_mode: vehicle, loader_type: prediction, state_frame: global, drive_as_record: False, continous_action: False, control_steering: False, max_steps: None, npc_type: react, npc_num: 5, other_num: 5, route_type: ground_truth, visualization: True, ghost_visualization: False, route_visualization: True, route_bound_visualization: False, port: 5557, only_trouble: False, eval: False, decoder_target: predict, predict_horizen: 20}
+    interaction: {map_name: DR_USA_Intersection_EP0, load_mode: vehicle, loader_type: prediction, state_frame: global, drive_as_record: False, continous_action: False, control_steering: False, max_steps: None, npc_type: react, npc_num: 5, other_num: 5, route_type: ground_truth, visualization: True, ghost_visualization: False, route_visualization: True, route_bound_visualization: False, port: 5561, only_trouble: False, eval: False, decoder_target: predict, predict_horizen: 20}
 
   # Agent
   task_behavior: Greedy
@@ -116,18 +117,25 @@ interaction_prediction:
     prealloc: False
   run:
     replay_style: ep
-    script: eval_only
-    # script: train 
+    # script: eval_only
+    script: train 
     steps: 5.1e5 # 10.1e5
     eval_every: 5e8
     log_every: 1000
     
     # from_checkpoint: /home/gdg/NewDisc/MyPaperResources/[T-IV]Dream_to_Drive_with_PIWM/paper_models/comparison/small_set/PIM/8.21_paper_3/checkpoint_500k.ckpt
-    from_checkpoint: /home/gdg/NewDisc/MyPaperResources/[T-IV]Dream_to_Drive_with_PIWM/paper_models/comparison/big_set/PIM/8.21_paper_dataset_3/checkpoint_500k.ckpt
+    
+    #2024.10.17 19.23:
+    # from_checkpoint: /home/gdg/NewDisc/MyPaperResources/[T-IV]Dream_to_Drive_with_PIWM/paper_models/comparison/big_set/PIM/8.21_paper_dataset_3/checkpoint_500k.ckpt #原来执行的
+    # from_checkpoint: ''
+    #/home/zb/02_PIWM/Dream_to_Drive_with_PIWM/paper_models/comparison/big_set/20241017_test/checkpoint_500k.ckpt
+
     # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/predict/12.23_7action_1raccweight_4/checkpoint_500k.ckpt
     # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/3.28_npc:other=9:1_5/checkpoint_500k.ckpt
   env:
-    interaction: {port: 8888, state_frame: global, npc_type: record, loader_type: dataset, npc_num: 5, other_num: 5, decoder_target: predict, predict_horizen: 20, visualization: True, ghost_visualization: True}
+    #8888
+    interaction: {port: 5561, state_frame: global, npc_type: record, loader_type: prediction, npc_num: 5, other_num: 5, decoder_target: predict, predict_horizen: 20, visualization: False, ghost_visualization: True}   
+    # loader_type: prediction、visualization: True
   replay_size: 2e6
 
   # Env num setting
@@ -142,8 +150,20 @@ interaction_prediction:
   rssm: {deter: 200, units: 200, stoch: 16, classes: 16}
   # TODO: encoder/decoder keys should be easy to change according to npc_num and other num
   # 55, original
-  encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5','other_1','other_2','other_3','other_4','other_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction','npc_4_prediction','npc_5_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
+  encoder:
+      mlp_keys: __ENCODER_MLP_KEYS__
+      cnn_keys: '$^'
+      mlp_layers: 4
+      mlp_units: 200
+
+  decoder:
+      mlp_keys: __DECODER_MLP_KEYS__
+      cnn_keys: '$^'
+      mlp_layers: 4
+      mlp_units: 200
+
+  # encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5','other_1','other_2','other_3','other_4','other_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
+  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction','npc_4_prediction','npc_5_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
 
   # 19
   # encoder: {mlp_keys: ['ego','npc_1','other_1','other_2','other_3','other_4','other_5','other_6','other_7','other_8','other_9'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
@@ -238,10 +258,11 @@ interaction_recon:
     log_every: 1000
     
     # from_checkpoint: /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/paper_models/comparison/small_set/dreamerv3/8.28_paper_3/checkpoint_500k.ckpt
-    from_checkpoint: /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/paper_models/comparison/small_set/dreamerv3/8.28_paper_2/checkpoint_500k.ckpt
+    #from_checkpoint: /home/zb/02_PIWM/Dream_to_Drive_with_PIWM/paper_models/comparison/small_set/20241017/checkpoint_500k.ckpt
     
   env:
-    interaction: {port: 8888, state_frame: ego, npc_type: record, loader_type: prediction, npc_num: 5, other_num: 5, decoder_target: recon, predict_horizen: 0, visualization: True, ghost_visualization: True}
+                      #8888
+    interaction: {port: 5561, state_frame: ego, npc_type: record, loader_type: prediction, npc_num: 5, other_num: 5, decoder_target: recon, predict_horizen: 0, visualization: True, ghost_visualization: True}
   replay_size: 2e6
 
   # Env num setting
@@ -266,9 +287,6 @@ interaction_recon:
   actor_opt.lr: 4e-5
   critic_opt.lr: 1e-4
   actent: 1e-3
-
-
-
 
 
 atari:

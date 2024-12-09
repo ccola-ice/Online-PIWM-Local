@@ -31,6 +31,9 @@ class Agent(nj.Module):
     self.act_space = act_space['action']
     self.step = step
 
+    # obs_space:{'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_npc': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_npc': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), ...}
+    # act_space:{'action': Space(dtype=float32, shape=(4,), low=0, high=1)}
+    # config:{略}
     # create world model
     self.wm = WorldModel(obs_space, act_space, config, name='wm')
 
@@ -197,16 +200,23 @@ class Agent(nj.Module):
 class WorldModel(nj.Module):
 
   def __init__(self, obs_space, act_space, config):
-    self.obs_space = obs_space
-    self.act_space = act_space['action']
-    self.config = config
-    shapes = {k: tuple(v.shape) for k, v in obs_space.items()}
-    shapes = {k: v for k, v in shapes.items() if not k.startswith('log_')}
+    self.obs_space = obs_space # 
+    self.act_space = act_space['action'] # 
+    self.config = config # 
+    shapes = {k: tuple(v.shape) for k, v in obs_space.items()} # 观测空间字典的值转换成tuple
+    shapes = {k: v for k, v in shapes.items() if not k.startswith('log_')} # 去掉以log_开头的key
+    
     # intialize modules of the world model
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
+      # 初始化PIWMEncoder，对应论文的共享轨迹编码器和分支编码器
       # encoder for drive trajectories and map information
+      # self.encoder._traj_mlp  = xxx编码器(MLP)
+      # self.encoder._ego_mlp   = xxx编码器(MLP)
+      # self.encoder._npc_mlp   = xxx编码器(MLP)
+      # self.encoder._other_mlp = xxx编码器(MLP)
       self.encoder = nets_PIWM.PIWMEncoder(shapes, **config.encoder, name='enc')
+      # 初始化PredictAttention，对应论文的self-attention模块
       # attention modules which are used in different heads
       self.predict_attention = nets_PIWM.PredictAttention((), **config.attention, name='pred_attention')
       # recurrent state space model, modified for branch structure
@@ -252,6 +262,7 @@ class WorldModel(nj.Module):
     scales = self.config.loss_scales.copy()
     image, vector = scales.pop('image'), scales.pop('vector')
     scales.update({k: image for k in self.heads['decoder'].cnn_shapes})
+    
     # TODO: an elegant way to ...
     if self.config.task == 'interaction_prediction':
       # the prediction loss for different npcs is summed up to show
@@ -736,7 +747,8 @@ class ImagActorCritic(nj.Module):
     metrics['imag_weight_dist'] = jaxutils.subsample(traj['weight'])
     return metrics
 
-
+# TODO: what is the difference between VFunction and ImagActorCritic?
+# 值函数实现
 class VFunction(nj.Module):
 
   def __init__(self, rewfn, config):

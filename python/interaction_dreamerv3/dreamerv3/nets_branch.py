@@ -17,7 +17,6 @@ cast = jaxutils.cast_to_compute
 ''' Only contains some modules that are used in branch abalation only, and other modules for abalation study are in nets_PIM.py '''
 
 class OneBranchRSSM(nj.Module):
-
   def __init__(
       self, shapes, deter=1024, stoch=32, classes=32, unroll=False, initial='learned',
       unimix=0.01, action_clip=1.0, **kw):
@@ -30,17 +29,17 @@ class OneBranchRSSM(nj.Module):
     print('RSSM keys:', self._keys)
 
     # rssm network hyparameters
-    self._deter = deter # 'h' in the paper
-    self._stoch = stoch # 'z' in the paper
-    self._classes = classes # classes of 'z'
-    self._unroll = unroll # TODO: usually False?
+    self._deter = deter # 'h' in the paper        #隐藏状态hidden state
+    self._stoch = stoch # 'z' in the paper        #潜状态latent state
+    self._classes = classes # classes of 'z'      #潜状态z_t的类别数
+    self._unroll = unroll # TODO: usually False?  #是否展开
     self._initial = initial # 'learned' by config default
     self._unimix = unimix # true out = 99% net out + 1% random
-    self._action_clip = action_clip
-    self._kw = kw
+    self._action_clip = action_clip #动作剪枝
+    self._kw = kw #关键字参数
   
   def initial(self, batch_size): # bs=batch_size
-    state_dict = {}
+    state_dict = {}       #状态的字典
     for key in self._keys:
       # initialize latent state(z) based on different branches if use learned weights to do it
       state = self._initial_single_state(key, batch_size)
@@ -726,15 +725,15 @@ class TwoBranchRSSM(nj.Module):
 
 class OneBranchEncoder(nj.Module):
 
+  # 根据输入数据的形状和类型，初始化编码器模块CNN或MLP
   def __init__(
       self, shapes, cnn_keys=r'.*', mlp_keys=r'.*', mlp_layers=4,
       mlp_units=512, cnn='resize', cnn_depth=48,
       cnn_blocks=2, resize='stride',
       symlog_inputs=False, minres=4, **kw):
-    
+
     excluded = ('is_first', 'is_last')
-    shapes = {k: v for k, v in shapes.items() if (
-        k not in excluded and not k.startswith('log_') and not k.endswith('_prediction'))}
+    shapes = {k: v for k, v in shapes.items() if (k not in excluded and not k.startswith('log_') and not k.endswith('_prediction'))}
     self.cnn_shapes = {k: v for k, v in shapes.items() if (
         len(v) == 3 and re.match(cnn_keys, k))}
     self.mlp_shapes = {k: v for k, v in shapes.items() if (
@@ -745,24 +744,34 @@ class OneBranchEncoder(nj.Module):
 
     # cnn layers
     cnn_kw = {**kw, 'minres': minres, 'name': 'cnn'}
-    if self.cnn_shapes:
+    if self.cnn_shapes: # 如果有CNN输入
       if cnn == 'resnet':
         self._cnn = ImageEncoderResnet(cnn_depth, cnn_blocks, resize, **cnn_kw)
       else:
         raise NotImplementedError(cnn)
+    
     # mlp layers, 2 shared layers for trajectory and 2 layers for each branch
-    if self.mlp_shapes:
+    if self.mlp_shapes: # 如果有MLP输入
       # vehicle info
       enc_mlp_layer = int(mlp_layers / 2)
+
       # encode trajectory using the same mlp
+      # 初始化共享轨迹编码器，提取轨迹特征，对应论文中的shared trajectory encoder
       self._traj_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=symlog_inputs, name='traj_mlp')
+      
       # for ego, npc and other features, using different mlp
+      # 
       self._ego_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='ego_mlp')
+      
+      #
       self._vehicle_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='vehicle_mlp')
       # TODO: map info
       # self._map_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=symlog_inputs, name='map_mlp')
 
+  # 前向传播
   def __call__(self, data):
+    
+    # 1.数据重塑
     # to get batch dims, and reshape the data 
     some_key, some_shape = list(self.shapes.items())[0]
     batch_dims = data[some_key].shape[:-len(some_shape)]
@@ -772,13 +781,15 @@ class OneBranchEncoder(nj.Module):
 
     outputs_dict = {}
 
+    # 2.处理CNN输入(图像)
     # for image inputs
     if self.cnn_shapes:
-      inputs = jnp.concatenate([data[k] for k in self.cnn_shapes], -1)
-      output = self._cnn(inputs)
-      output = output.reshape((output.shape[0], -1))
-      outputs_dict.update({'cnn': output})
+      inputs = jnp.concatenate([data[k] for k in self.cnn_shapes], -1) # 将CNN数据在最后一个维度拼接，合并成一个输入
+      output = self._cnn(inputs) # 处理后的数据输入到CNN  (self._cnn = ImageEncoderResnet(cnn_depth, cnn_blocks, resize, **cnn_kw))
+      output = output.reshape((output.shape[0], -1)) # 将CNN输出展开成二维向量
+      outputs_dict.update({'cnn': output}) # 更新输出字典
 
+    # 3.处理MLP输入(向量/地图)
     # for vector inputs (vehicle and map)
     if self.mlp_shapes:
       for key in self.mlp_shapes:
@@ -832,7 +843,7 @@ class BranchEgoAttention(nj.Module):
     distkeys = (
         'dist', 'outscale', 'minstd', 'maxstd', 'outnorm', 'unimix', 'bins')
     self._dense = {k: v for k, v in kw.items() if k not in distkeys}
-    self._dist = {k: v for k, v in kw.items() if k in distkeys}
+    self._dist  = {k: v for k, v in kw.items() if k in distkeys}
 
   def __call__(self, inputs_dict):
     # preprocess inputs
@@ -862,9 +873,12 @@ class BranchEgoAttention(nj.Module):
     q_ego = q_ego.transpose(0,2,1,3)
     k_all = k_all.transpose(0,2,1,3)
     v_all = v_all.transpose(0,2,1,3)
-    # print('q shape:', q.shape)
-    # print('k shape:', k.shape)
-    # print('v shape:', v.shape)
+    print('q :', q_ego)
+    print('k :', k_all)
+    print('v :', v_all)
+    print('q shape:', q_ego.shape)
+    print('k shape:', k_all.shape)
+    print('v shape:', v_all.shape)
     # mask Dimensions: Batch*Length, head, 1, entity
     ego_mask = jnp.ones(list(q_ego.shape[:1]) + [1,1]) # Batch*Length, 1, 1
     npc_mask = npc_mask.reshape(-1, 1, npc_num)
@@ -872,7 +886,7 @@ class BranchEgoAttention(nj.Module):
     mask = jnp.concatenate([ego_mask, npc_mask, other_mask], axis=-1).reshape([-1, 1, 1, npc_num + other_num + 1])
     # mask = jnp.concatenate([ego_mask, npc_mask], axis=-1).reshape([-1, 1, 1, npc_num + 1])
     mask = jnp.repeat(mask, self._heads, axis=1)
-    # print('mask shape', mask.shape)    
+    # print('mask shape', mask.shape)
     # TODO: the attention of ego and npc can be get through 'different attention layers', 
     # since they do different tasks in latter parts(npc for future prediction and ego for actor/critic/reward/count)
     # yet we use different mlp head to get a different attention result for ego and npc for now
@@ -1066,94 +1080,127 @@ class MLP(nj.Module):
   def __init__(
       self, shape, layers, units, inputs=['tensor'], dims=None,
       symlog_inputs=False, **kw):
+    # **kw 其他关键字参数
+
     # data shape type transition
     assert shape is None or isinstance(shape, (int, tuple, dict)), shape
     if isinstance(shape, int):
-      shape = (shape,)
+      shape = (shape,)  # 将整数类型shape转换为元组
+
     # network hyparameters
-    self._shape = shape
-    self._layers = layers
-    self._units = units
-    self._inputs = Input(inputs, dims=dims)
-    self._symlog_inputs = symlog_inputs
+    self._shape = shape   # 输出数据的形状，可以是整数、元组或字典
+    self._layers = layers # MLP的层数
+    self._units = units   # 每层的神经元数量
+    self._inputs = Input(inputs, dims=dims) # 输入类型，默认为['tensor']
+    self._symlog_inputs = symlog_inputs # 是否对输入进行对称对数变换 False
+
     # key words for dense layers and output(distribution) layers
     distkeys = (
         'dist', 'outscale', 'minstd', 'maxstd', 'outnorm', 'unimix', 'bins')
-    self._dense = {k: v for k, v in kw.items() if k not in distkeys}
-    self._dist = {k: v for k, v in kw.items() if k in distkeys}
+    # 全连接层参数：
+    self._dense = {k: v for k, v in kw.items() if k not in distkeys}  #将distkeys之外的关键字参数保存到self._dense中,作为全连接层参数
+    # 输出层参数：
+    self._dist = {k: v for k, v in kw.items() if k in distkeys} #将distkeys之内的关键字参数保存到self._dist中,作为输出层参数
 
+  # 多层感知机的前向传播
   def __call__(self, inputs):
-    # preprocess inputs
+    
+    # 1.输入预处理
+    # preprocess inputs    
     feat = self._inputs(inputs)
     if self._symlog_inputs:
       feat = jaxutils.symlog(feat)
-    x = jaxutils.cast_to_compute(feat)
+    x = jaxutils.cast_to_compute(feat) # 将输入数据转换为浮点数
 
+    # 2.多层感知机的前向传播,特征提取
     # make it flatten
-    x = x.reshape([-1, x.shape[-1]])
-    for i in range(self._layers):
+    x = x.reshape([-1, x.shape[-1]]) # 展平输入的形状：x.shape[-1]表示保持最后一个维度的值不变，-1表示自动计算其他维度的数值。比如：原始输入是(32,10,256)，那么x = x.reshape([-1,256])的输出是(320,256)
+    for i in range(self._layers): # 遍历MLP每一层
       x = self.get(f'h{i}', Linear, self._units, **self._dense)(x)
-    x = x.reshape(feat.shape[:-1] + (x.shape[-1],))
+      # f'h{i}' 是该层的名称，‘h{0},h{1}’
+      # Linear  是该层的类型，(线性层)
+      # self._units是该层的输出维度(神经元数量)
+      # **self._dense：解引用全连接层的参数，比如激活函数
+      # self.get()函数首先判断名为'h{i}'的线性层是否已经存在，如果不存在则创建一个新的Linear层，参数为self._units和self._dense。
+      # 其返回值为一个配置好的线性层对象，这个对象包含:权重矩阵、偏置、激活函数等参数。
+      # 然后用这样一个线性层对象处理x的输入，进行前向计算得到输出x。
+    x = x.reshape(feat.shape[:-1] + (x.shape[-1],)) # 将多层n线性变换的结果重塑为原始形状
+    # feat.shape[:-1] 表示保持原始输入feat的所有维度除了最后一个维度，
+    # x.shape[-1] 表示经过MLP处理后的特征维度(神经元数量)，x为输入经过所有线性层的输出，而输出的最后一个维度是self._units。 (线性层输出的最后一个维度是self._units，所以x.shape[-1] = self._units）
+    # 最终这句话使得e多层线性变换后的形状没变，只有最后一个维度的值改变了。
 
+    # 3.多层感知机的前向传播，输出层
     # different kinds of outputs according to self._shape's type
     if self._shape is None:
-      return x
+      return x # 直接返回特征
     elif isinstance(self._shape, tuple):
-      return self._out('out', self._shape, x)
+      return self._out('out', self._shape, x) # 根据self._dist参数生成单个概率分布输出 #调用_out()函数，‘out’赋给name，self._shape赋给shape，x赋给x。进一步调用self.get，原理同上
     elif isinstance(self._shape, dict):
-      return {k: self._out(k, v, x) for k, v in self._shape.items()}
+      return {k: self._out(k, v, x) for k, v in self._shape.items()} # 生成多个命名的概率分布输出
     else:
       raise ValueError(self._shape)
 
   def _out(self, name, shape, x):
-    return self.get(f'dist_{name}', Dist, shape, **self._dist)(x)
+    return self.get(f'dist_{name}', Dist, shape, **self._dist)(x) # 将x转换为不同的概率分布
 
 
+# 基于Resnet的图像编码器
 class ImageEncoderResnet(nj.Module):
 
   def __init__(self, depth, blocks, resize, minres, **kw):
-    self._depth = depth
-    self._blocks = blocks
-    self._resize = resize
-    self._minres = minres
-    self._kw = kw
+    self._depth = depth # 卷积层输出通道数
+    self._blocks = blocks # 每阶段残差块数
+    self._resize = resize # 下采样方式
+    self._minres = minres # 最小分辨率
+    self._kw = kw # 其他参数
 
   def __call__(self, x):
-    stages = int(np.log2(x.shape[-2]) - np.log2(self._minres))
-    depth = self._depth
-    x = jaxutils.cast_to_compute(x) - 0.5
+    stages = int(np.log2(x.shape[-2]) - np.log2(self._minres)) # 计算阶段数 = log2(输入分辨率) - log2(最小分辨率)
+    depth = self._depth # 设置初始特征通道数
+    x = jaxutils.cast_to_compute(x) - 0.5 # 预处理输入数据：归一化到[-0.5, 0.5]
     # print(x.shape)
-    for i in range(stages):
-      kw = {**self._kw, 'preact': False}
+    
+    #遍历每个阶段
+    for i in range(stages): 
+      kw = {**self._kw, 'preact': False} # 设置卷积层参数，preact=False表示在卷积之后激活
+      
+      # 下采样层：将特征图尺寸缩小一半
       if self._resize == 'stride':
-        x = self.get(f's{i}res', Conv2D, depth, 4, 2, **kw)(x)
+        x = self.get(f's{i}res', Conv2D, depth, 4, 2, **kw)(x) # 使用步幅为2、卷积核大小为 4 的卷积进行下采样。
       elif self._resize == 'stride3':
         s = 2 if i else 3
         k = 5 if i else 4
-        x = self.get(f's{i}res', Conv2D, depth, k, s, **kw)(x)
+        x = self.get(f's{i}res', Conv2D, depth, k, s, **kw)(x) # 在第一个阶段使用步幅为 3、卷积核大小为 4，下一个阶段使用步幅为 2、卷积核大小为 5。
       elif self._resize == 'mean':
         N, H, W, D = x.shape
-        x = self.get(f's{i}res', Conv2D, depth, 3, 1, **kw)(x)
-        x = x.reshape((N, H // 2, W // 2, 4, D)).mean(-2)
+        x = self.get(f's{i}res', Conv2D, depth, 3, 1, **kw)(x) # 先卷积，
+        x = x.reshape((N, H // 2, W // 2, 4, D)).mean(-2)      # 然后通过重塑()和求平均()实现下采样。
       elif self._resize == 'max':
-        x = self.get(f's{i}res', Conv2D, depth, 3, 1, **kw)(x)
+        x = self.get(f's{i}res', Conv2D, depth, 3, 1, **kw)(x) # 先卷积，
         x = jax.lax.reduce_window(
-            x, -jnp.inf, jax.lax.max, (1, 3, 3, 1), (1, 2, 2, 1), 'same')
+            x, -jnp.inf, jax.lax.max, (1, 3, 3, 1), (1, 2, 2, 1), 'same') # 然后使用最大池化进行下采样。
       else:
         raise NotImplementedError(self._resize)
-      for j in range(self._blocks):
-        skip = x
-        kw = {**self._kw, 'preact': True}
-        x = self.get(f's{i}b{j}conv1', Conv2D, depth, 3, **kw)(x)
-        x = self.get(f's{i}b{j}conv2', Conv2D, depth, 3, **kw)(x)
-        x += skip
+      
+      # 每个阶段中遍历所有残差块：进行特征提取
+      for j in range(self._blocks): 
+        skip = x # 保存残差连接的输入
+        kw = {**self._kw, 'preact': True} # 设置残差块内卷积的参数，preact=True表示在卷积前激活
+        x = self.get(f's{i}b{j}conv1', Conv2D, depth, 3, **kw)(x) # 残差块的3*3卷积层，‘=’左边的x相当于经过了第一个卷积层
+        x = self.get(f's{i}b{j}conv2', Conv2D, depth, 3, **kw)(x) # 残差块的3*3卷积层，‘=’左边的x相当于经过了第二个卷积层
+        x += skip # 添加残差连接，将输入与输出相加 将经过了两个卷积层的输出与最开始的输入相加
         # print(x.shape)
+
+      # 每个阶段结束时将特征通道数翻倍  
       depth *= 2
+    
     if self._blocks:
-      x = get_act(self._kw['act'])(x)
-    x = x.reshape((x.shape[0], -1))
+      x = get_act(self._kw['act'])(x) # 首先从关键字参数self.kw[]中获取激活函数名称，get_act()函数返回对应的激活函数，(ReLU、tanh...)。对最终的输出特征图x进行激活
+    
+    x = x.reshape((x.shape[0], -1)) # 将激活后的x特征图展平成二维向量。将特征图的第一维(batch_size)，与特征图的高、宽、深度展平成一维向量后的组合成一个二维向量。
+                                    # 如：从(batch_size, height, width, channels)变为(batch_size, height * width * channels)
     # print(x.shape)
-    return x
+    return x #输出CNN编码器的特征向量
   
 
 class ImageDecoderResnet(nj.Module):
@@ -1212,7 +1259,8 @@ class ImageDecoderResnet(nj.Module):
 
 '''Basic network units'''
 
-def get_act(name):
+# 获取激活函数
+def get_act(name): 
   if callable(name):
     return name
   elif name == 'none':

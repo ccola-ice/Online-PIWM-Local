@@ -11,14 +11,13 @@ from interaction_dreamerv3.client_interface import ClientInterface
 class Interaction(embodied.Env):
   
   def __init__(self, task, args):
-    self._task = task
-    self._args = args
-    self._env = ClientInterface(self._args)
-
+    self._task = task # 'prediction', 'branch', 'recon'
+    self._args = args # args就是kwargs，也就是config里的内容(第1次)
+    self._env = ClientInterface(self._args) #调用的是ClientInterface类的__init__方法，返回值是？
     self._done = True
     print('Set I-SIM env successfully!')
 
-  @property
+  @property # @property可以使 Interaction.obs_space,不用加括号
   def obs_space(self):
     # for prediction decode target, needs to separate different vehicles and predict each of them
     if self._task == 'prediction':
@@ -189,6 +188,7 @@ class Interaction(embodied.Env):
       })
       return obs
     
+    # 步进更新isim环境
     # step the environment
     # TODO: consider multiple ego vehicles
     action_dict = {self._env.ego_id_list[0]: [action['action']]}

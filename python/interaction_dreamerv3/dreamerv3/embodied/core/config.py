@@ -3,7 +3,7 @@ import json
 import re
 
 from . import path
-
+from ruamel.yaml import YAML
 
 class Config(dict):
 
@@ -32,7 +32,9 @@ class Config(dict):
     elif filename.suffix in ('.yml', '.yaml'):
       import ruamel.yaml as yaml
       with io.StringIO() as stream:
-        yaml.safe_dump(dict(self), stream)
+        #yaml.safe_dump(dict(self), stream)
+        yaml = YAML(typ='unsafe', pure=True)
+        yaml.dump(dict(self), stream)
         filename.write(stream.getvalue())
     else:
       raise NotImplementedError(filename.suffix)
