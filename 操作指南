@@ -1,0 +1,38 @@
+1. docker安装lanelet2环境
+进入Lanelet2-master文件夹，执行：
+docker build -t #image_name# .
+
+2. 启用模拟器
+安装完成后，运行docker并做好端口映射，并进入docker容器终端，即执行：
+docker run -it -e DISPLAY -p #0000#-#0000#:#0000#-#0000# -v /home/gdg/InteractionRL/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name #container_name# #image_name#:latest bash
+
+docker run -it -e DISPLAY -p 5557-5561:5557-5561 -v /home/gdg/InteractionRL/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim57 interrl:latest bash
+docker run -it -e DISPLAY -p 5562-5566:5562-5566 -v /home/gdg/InteractionRL/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim62 interrl:latest bash
+docker run -it -e DISPLAY -p 5567-5571:5567-5571 -v /home/gdg/InteractionRL/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim67 interrl:latest bash
+docker run -it -e DISPLAY -p 5572-5576:5572-5576 -v /home/gdg/InteractionRL/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim72 interrl:latest bash
+
+docker run -it -e DISPLAY -p 8888-8892:8888-8892 -v /home/gdg/InteractionRL/Dreamer_Inter/python/interaction_gym:/home/developer/workspace/interaction_gym -v /tmp/.X11-unix:/tmp/.X11-unix --user="$(id --user):$(id --group)" --name isim88 interrl:latest bash
+
+cd interaction_gym/
+
+3. 软件更新
+进入建立的docker容器内，令其自动更新其他依赖：
+sudo apt update
+sudo apt install python-tk #python2
+
+4. 重启电脑后，需重新启动已关闭的容器
+依次执行下列语句即可：
+docker restart #container_name#
+docker exec -it #container_name# bash
+cd interaction_gym/
+export DISPLAY=:0
+
+5. 仿真环境的测试与运行
+数据可视化：python main_visualize_data.py "DR_USA_Intersection_EP0"
+
+算法环境（docker外部环境）启动：
+1）python main.py
+仿真环境（docker内部客服端）启动：
+2）python interaction_env.py --port #port num# 
+"DR_USA_Intersection_EP0"
+

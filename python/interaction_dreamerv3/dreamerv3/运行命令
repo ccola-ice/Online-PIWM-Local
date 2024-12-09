@@ -1,0 +1,19 @@
+
+训练：
+python train.py --logdir /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/debug/dreamerv3 --configs interaction_prediction --task interaction_prediction
+python train.py --logdir /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/predict/xxxx --configs interaction_prediction --task interaction_prediction
+or
+python train.py --logdir /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/debug/dreamerv3 --configs interaction_recon --task interaction_recon
+
+
+测试：
+python train.py --logdir /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/predict/test --configs interaction_prediction --task interaction_prediction
+or
+python train.py --logdir /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/ori/test --configs interaction_recon --task interaction_recon
+
+原版debug：
+python dreamerv3/train.py --logdir ~/logdir/$(date "+%Y%m%d-%H%M%S") --configs crafter --batch_size 16 --run.train_ratio 32
+
+看图：
+python plot_interaction_training.py --indirs /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/ISIM_INTERACTION_large_scale --outdir /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/ISIM_INTERACTION_large_scale
+
