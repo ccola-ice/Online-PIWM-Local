@@ -56,6 +56,14 @@ class ClientInterface(object):
         # record prediction data if possible to calculate ade
         self.prediction_data_dict = dict()
         self._prediction_filename = "prediction " + time_string + '.pkl'
+            
+        # .pkl文件目录
+        save_dir = 'pkl_data'
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        # 更新.pkl文件目录
+        self._run_filename = os.path.join(save_dir, "run " + time_string + '.pkl')
+        self._prediction_filename = os.path.join(save_dir, "prediction " + time_string + '.pkl')
 
     def __del__(self):
         self._socket.close()
