@@ -15,11 +15,7 @@ class Greedy(nj.Module):
     # define reward function (sample mean)
     if config.task == 'interaction_prediction':
       rewfn = lambda s, att: wm.heads['reward'](s, att).mean()[1:]
-    elif config.task == 'interaction_branch':
-      rewfn = lambda s, att: wm.heads['reward'](s, att).mean()[1:]
-    elif config.task == 'interaction_recon':
-      rewfn = lambda s: wm.heads['reward'](s).mean()[1:]
-
+    
     # initialize actor and critic
     # critic_type is 'vfunction' by default
     if config.critic_type == 'vfunction':

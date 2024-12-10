@@ -133,9 +133,8 @@ interaction_prediction:
     # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/predict/12.23_7action_1raccweight_4/checkpoint_500k.ckpt
     # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/3.28_vdi:vpi=9:1_5/checkpoint_500k.ckpt
   env:
-    #8888
-    interaction: {port: 5561, state_frame: global, vdi_type: record, loader_type: prediction, vdi_num: 6, vpi_num: 6, decoder_target: predict, predict_horizen: 20, visualization: False, ghost_visualization: True}   
-    # loader_type: prediction、visualization: True
+    interaction: {port: 5561, state_frame: global, vdi_type: record, loader_type: prediction, vdi_num: 7, vpi_num: 7, decoder_target: predict, predict_horizen: 20, visualization: False, ghost_visualization: True}   
+    # 8888 loader_type: prediction、visualization: True
   replay_size: 2e6
 
   # Env num setting
@@ -149,7 +148,6 @@ interaction_prediction:
   decode_target: predict
   rssm: {deter: 200, units: 200, stoch: 16, classes: 16}
   # TODO: encoder/decoder keys should be easy to change according to vdi_num and vpi num
-  # 55, original
   encoder:
       mlp_keys: __ENCODER_MLP_KEYS__
       cnn_keys: '$^'
@@ -174,92 +172,6 @@ interaction_prediction:
   critic_opt.lr: 1e-4
   actent: 1e-3
 
-
-interaction_branch:
-
-  task: interaction_branch
-  jax:
-    prealloc: False
-  run:
-    replay_style: chunk # ep # 
-    script: train # eval_only 
-    steps: 5.1e5
-    eval_every: 5e8
-    log_every: 1000
-    
-    # from_checkpoint: /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/paper_models/ablation_on_branch_sturcture/small_set/Two_branch/9.8_two_branch_4/checkpoint_500k.ckpt
-  env:
-    interaction: {port: 5557, state_frame: ego, vdi_type: record, loader_type: prediction, vdi_num: 5, vpi_num: 5, decoder_target: recon, predict_horizen: 0, visualization: False}
-  replay_size: 2e6
-
-  # Env num setting
-  envs.amount: 1
-  envs.parallel: none
-  
-  # Agent
-  batch_length: 50
-  
-  # World model
-  decode_target: recon
-  rssm: {deter: 200, units: 200, stoch: 16, classes: 16}
-  # TODO: encoder/decoder keys should be easy to change according to vdi_num and vpi num
-  encoder: {mlp_keys: ['ego','vdi_1','vdi_2','vdi_3','vdi_4','vdi_5','vpi_1','vpi_2','vpi_3','vpi_4','vpi_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-  decoder: {mlp_keys: ['ego','vdi_1','vdi_2','vdi_3','vdi_4','vdi_5','vpi_1','vpi_2','vpi_3','vpi_4','vpi_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-  reward_head: {layers: 4, units: 400}
-  cont_head: {layers: 4, units: 400}
-  attention: {layers: 1, heads: 2, units_per_head: 200, bias: False}
-  model_opt.lr: 2e-4
-  
-  # Actor and Critic
-  actor: {layers: 4, units: 400}
-  critic: {layers: 4, units: 400}
-  actor_opt.lr: 4e-5
-  critic_opt.lr: 1e-4
-  actent: 1e-3
-  
-  
-interaction_recon:
-
-  task: interaction_recon
-  jax:
-    prealloc: False
-  run:
-    replay_style: chunk
-    script: eval_only # train
-    steps: 5.1e5
-    eval_every: 5e8
-    log_every: 1000
-    
-    # from_checkpoint: /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/paper_models/comparison/small_set/dreamerv3/8.28_paper_3/checkpoint_500k.ckpt
-    #from_checkpoint: /home/zb/02_PIWM/Dream_to_Drive_with_PIWM/paper_models/comparison/small_set/20241017/checkpoint_500k.ckpt
-    
-  env:
-                      #8888
-    interaction: {port: 5561, state_frame: ego, vdi_type: record, loader_type: prediction, vdi_num: 5, vpi_num: 5, decoder_target: recon, predict_horizen: 0, visualization: True, ghost_visualization: True}
-  replay_size: 2e6
-
-  # Env num setting
-  envs.amount: 1
-  envs.parallel: none
-  
-  # Agent
-  batch_length: 50
-  
-  # World model
-  decode_target: recon
-  rssm: {deter: 400, units: 400, stoch: 32, classes: 32}
-  encoder: {mlp_keys: 'state', cnn_keys: '$^', mlp_layers: 4, mlp_units: 400}
-  decoder: {mlp_keys: 'state', cnn_keys: '$^', mlp_layers: 4, mlp_units: 400}
-  reward_head: {layers: 4, units: 400}
-  cont_head: {layers: 4, units: 400}
-  model_opt.lr: 2e-4
-  
-  # Actor and Critic
-  actor: {layers: 4, units: 400}
-  critic: {layers: 4, units: 400}
-  actor_opt.lr: 4e-5
-  critic_opt.lr: 1e-4
-  actent: 1e-3
 
 
 atari:

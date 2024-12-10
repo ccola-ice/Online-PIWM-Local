@@ -675,7 +675,6 @@ class PredictAttention(nj.Module):
         x = self.get('vpi_out_mlp', Linear, units=self._heads*self._units_per_head, **self._dense)(x)
         self_attention_out_dict[f'vpi_{i-vdi_num}'] = x.reshape(list(vehicle_features_q.shape[:-2]) + [-1])
     return self_attention_out_dict, self_attention_out_dict, self_attention_mat_dict
-  
 
 class EgoAttention(nj.Module):
   # cross-attention or ego-attention, produce attention value for ego's task of actor/critic/predicting reward/predicting count
@@ -838,7 +837,6 @@ class PredictionDecoder(nj.Module):
     if self._image_dist == 'mse':
       return jaxutils.MSEDist(mean, 3, 'sum')
     raise NotImplementedError(self._image_dist)
-    
 
 class PIWMMLP(nj.Module):
   
@@ -966,7 +964,6 @@ class MLP(nj.Module):
 
   def _out(self, name, shape, x):
     return self.get(f'dist_{name}', Dist, shape, **self._dist)(x)
-
 
 class ImageEncoderResnet(nj.Module):
 

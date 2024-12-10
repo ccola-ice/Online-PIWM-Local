@@ -34,7 +34,7 @@ def main(argv=None):
 
   # 从configs.yaml文件中获取vdi_num和vpi_num的值
   vdi_num   = config['interaction_prediction']['env']['interaction']['vdi_num']
-  vpi_num = config['interaction_prediction']['env']['interaction']['vpi_num']
+  vpi_num   = config['interaction_prediction']['env']['interaction']['vpi_num']
 
   parsed, vpi = embodied.Flags(configs=['defaults']).parse_known(argv)
   config = embodied.Config(agt.Agent.configs['defaults'])

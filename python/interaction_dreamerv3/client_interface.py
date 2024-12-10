@@ -44,7 +44,6 @@ class ClientInterface(object):
         self.can_change_track_file_flag = False
         self.scen_init_flag = False
         self.env_reset_flag = False
-
         self._gt_csv_index = None
         self.ego_id_list = None
 

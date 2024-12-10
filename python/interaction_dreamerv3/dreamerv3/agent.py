@@ -33,7 +33,7 @@ class Agent(nj.Module):
 
     # obs_space:{'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), ...}
     # act_space:{'action': Space(dtype=float32, shape=(4,), low=0, high=1)}
-    # config:{略}
+    # config:{}
     # create world model
     self.wm = WorldModel(obs_space, act_space, config, name='wm')
 
@@ -68,12 +68,6 @@ class Agent(nj.Module):
     if self.config.task == 'interaction_prediction':
       post_dict, _ = self.wm.rssm.obs_step(
           prev_latent, prev_action, embed_dict, obs['is_first'], obs['should_init_vdi'], obs['should_init_vpi'], obs['mask_vdi'], obs['mask_vpi'])
-    elif self.config.task == 'interaction_branch':
-      post_dict, _ = self.wm.rssm.obs_step(
-          prev_latent, prev_action, embed_dict, obs['is_first'], obs['should_init_vdi'], obs['should_init_vpi'])
-    elif self.config.task == 'interaction_recon':
-      post_dict, _ = self.wm.rssm.obs_step(
-          prev_latent, prev_action, embed_dict, obs['is_first'])
     
     # for policy in branch sturture, we use ego_attention
     # TODO: an elegant way to use different modules
@@ -81,26 +75,13 @@ class Agent(nj.Module):
       feats_dict = {k: v for k,v in post_dict.items()}
       feats_dict.update({'mask_vdi': obs['mask_vdi']})
       ego_attention_out, ego_attention_mat = self.wm.ego_attention(feats_dict)
-    elif self.config.task == 'interaction_branch':
-      feats_dict = {k: v for k,v in post_dict.items()}
-      feats_dict.update({'mask_vdi': obs['mask_vdi']})
-      feats_dict.update({'mask_vpi': obs['mask_vpi']})
-      ego_attention_out, ego_attention_mat = self.wm.ego_attention_branch(feats_dict)
-    
+       
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       self.expl_behavior.policy(post_dict, expl_state, ego_attention_out)
       task_outs, task_state = self.task_behavior.policy(post_dict, task_state, ego_attention_out)
       expl_outs, expl_state = self.expl_behavior.policy(post_dict, expl_state, ego_attention_out)
-    elif self.config.task == 'interaction_branch':
-      self.expl_behavior.policy(post_dict, expl_state, ego_attention_out)
-      task_outs, task_state = self.task_behavior.policy(post_dict, task_state, ego_attention_out)
-      expl_outs, expl_state = self.expl_behavior.policy(post_dict, expl_state, ego_attention_out)
-    elif self.config.task == 'interaction_recon':
-      self.expl_behavior.policy(post_dict, expl_state)
-      task_outs, task_state = self.task_behavior.policy(post_dict, task_state)
-      expl_outs, expl_state = self.expl_behavior.policy(post_dict, expl_state)
-
+    
     if mode == 'eval': # task behavior, no entropy
       outs = task_outs
       outs['action'] = outs['action'].sample(seed=nj.rng())
@@ -228,32 +209,7 @@ class WorldModel(nj.Module):
           'reward': nets_PIWM.PIWMMLP((), **config.reward_head, name='rew'),
           'cont': nets_PIWM.PIWMMLP((), **config.cont_head, name='cont'),
           }
-
-    elif self.config.task == 'interaction_branch':
-      self.heads = {}
-      self.ego_attention_branch = nets_branch.BranchEgoAttention((), **config.attention, name='ego_attention_branch')
-      # one branch for surrounding vehicles
-      # self.encoder = nets_branch.OneBranchEncoder(shapes, **config.encoder, name='enc')
-      # self.rssm = nets_branch.OneBranchRSSM(shapes, **config.rssm, name='rssm')
-      # self.heads.update({'decoder': nets_branch.OneBranchDecoder(shapes, **config.decoder, name='dec')})
-      # two branches for surrounding vehicles
-      self.encoder = nets_PIWM.PIWMEncoder(shapes, **config.encoder, name='enc')
-      self.rssm = nets_branch.TwoBranchRSSM(shapes, **config.rssm, name='rssm')
-      self.heads.update({'decoder': nets_branch.TwoBranchDecoder(shapes, **config.decoder, name='dec')})
-      # for only branch structure, we don't need prediction attention modules since all vehicles just recon their own history
-      self.heads.update({
-          'reward': nets_PIWM.PIWMMLP((), **config.reward_head, name='rew'),
-          'cont': nets_PIWM.PIWMMLP((), **config.cont_head, name='cont'),
-          })
-
-    elif self.config.task == 'interaction_recon':
-      self.encoder = nets_original.MultiEncoder(shapes, **config.encoder, name='enc')
-      self.rssm = nets_original.RSSM(**config.rssm, name='rssm')
-      self.heads = {
-          'decoder': nets_original.MultiDecoder(shapes, **config.decoder, name='dec'),
-          'reward': nets_original.MLP((), **config.reward_head, name='rew'),
-          'cont': nets_original.MLP((), **config.cont_head, name='cont')
-          }
+    
     else:
       raise NotImplementedError(f'Unknown task {self.config.task}')
 
@@ -272,17 +228,6 @@ class WorldModel(nj.Module):
             scales.update({'vdi_prediction': vector})
         else:
           scales.update({k: vector})
-    elif self.config.task == 'interaction_branch':
-      # the recon loss for ego and different vdis and vpis are summed up to show
-      for k in self.heads['decoder'].mlp_shapes:
-        if k.startswith(('ego', 'vdi_', 'vpi_')):
-          if 'vehicle_recon' not in scales.keys():
-            scales.update({'vehicle_recon': vector})
-        else:
-          scales.update({k: vector})
-    elif self.config.task == 'interaction_recon':
-      for k in self.heads['decoder'].mlp_shapes:
-        scales.update({k: vector})
 
     self.scales = scales
 
@@ -296,10 +241,7 @@ class WorldModel(nj.Module):
     if self.config.task == 'interaction_prediction':
       # encoder, rssm, predict_attention for future prediction, ego_attention for decision and reward predict, decoder, reward, cont
       modules = [self.encoder, self.rssm, self.predict_attention, self.ego_attention, *self.heads.values()] 
-    elif self.config.task == 'interaction_branch':
-      modules = [self.encoder, self.rssm, self.ego_attention_branch, *self.heads.values()]
-    elif self.config.task == 'interaction_recon':
-      modules = [self.encoder, self.rssm, *self.heads.values()]
+    
     # print('modules len:', len(modules))
     # print('loss:', self.loss)
     # print('data:', data.keys())
@@ -323,13 +265,7 @@ class WorldModel(nj.Module):
     if self.config.task == 'interaction_prediction':
       post_dict, prior_dict = self.rssm.observe(
           embed_dict, prev_actions, data['is_first'], data['should_init_vdi'], data['should_init_vpi'], data['mask_vdi'], data['mask_vpi'], prev_latent)
-    elif self.config.task == 'interaction_branch':
-      post_dict, prior_dict = self.rssm.observe(
-          embed_dict, prev_actions, data['is_first'], data['should_init_vdi'], data['should_init_vpi'], prev_latent)
-    elif self.config.task == 'interaction_recon':
-      post_dict, prior_dict = self.rssm.observe(
-          embed_dict, prev_actions, data['is_first'], prev_latent)
-    
+        
     # print('post keys:', post_dict.keys())
     
     # TODO: feats include embed in original v3? dont know why, since head dont use embed as input, dont consider it:
@@ -346,12 +282,6 @@ class WorldModel(nj.Module):
                          })
       # predict_attention_out_dict, predict_attention_mat_dict = self.predict_attention(feats_dict)
       ego_attention_out, ego_attention_mat = self.ego_attention(feats_dict)
-    elif self.config.task == 'interaction_branch':
-      feats_dict.update({
-                        'mask_vdi': data['mask_vdi'],
-                        'mask_vpi': data['mask_vpi'],
-                         })
-      ego_attention_out, ego_attention_mat = self.ego_attention_branch(feats_dict)
 
     # feat is a concat of z and h (stoch and deter)
     # TODO: use feats_dict or post_dict? seems like post_dict is enough
@@ -363,13 +293,6 @@ class WorldModel(nj.Module):
           out = head(feats_dict if name in self.config.grad_heads else sg(feats_dict))
         elif name in ['reward', 'cont']:
           out = head(feats_dict, ego_attention_out if name in self.config.grad_heads else sg(feats_dict, ego_attention_out))
-      elif self.config.task == 'interaction_branch':
-        if name in ['decoder']:
-          out = head(feats_dict if name in self.config.grad_heads else sg(feats_dict))
-        elif name in ['reward', 'cont']:
-          out = head(feats_dict, ego_attention_out if name in self.config.grad_heads else sg(feats_dict, ego_attention_out))
-      elif self.config.task == 'interaction_recon':
-        out = head(feats_dict if name in self.config.grad_heads else sg(feats_dict))
       out = out if isinstance(out, dict) else {name: out}
       dists.update(out)
 
@@ -409,43 +332,6 @@ class WorldModel(nj.Module):
           losses.pop(kl)
       model_loss = sum(scaled.values())
 
-    elif self.config.task == 'interaction_branch':
-      # dyn and rep loss
-      losses['dyn'] = self.rssm.dyn_loss(post_dict, prior_dict, data['mask_vdi'], data['mask_vpi'], **self.config.dyn_loss)
-      losses['rep'] = self.rssm.rep_loss(post_dict, prior_dict, data['mask_vdi'], data['mask_vpi'], **self.config.rep_loss)
-      # sum up vehicle(vdi + vpi) branch recon loss
-      loss = jnp.zeros(embed_dict['ego'].shape[:2])
-      for key, dist in dists.items():
-        if key.startswith(('ego', 'vdi_', 'vpi_')):
-          loss += -dist.log_prob(data[key].astype(jnp.float32))
-      assert loss.shape == embed_dict['ego'].shape[:2], (key, loss.shape)
-      losses.update({'vehicle_recon': loss})
-      # vpi losses (reward, cont)
-      for key, dist in dists.items():
-        if (not key.startswith('ego')) and (not key.startswith('vdi_')) and (not key.startswith('vpi_')):
-          loss = -dist.log_prob(data[key].astype(jnp.float32))
-          assert loss.shape == embed_dict['ego'].shape[:2], (key, loss.shape)
-          losses[key] = loss
-      # scaled loss - no kl
-      scaled = {k: v * self.scales[k] for k, v in losses.items() if k not in ('dyn', 'rep')}
-      # scaled loss - add kl
-      for kl in ('dyn', 'rep'):
-        scaled.update({k: v * self.scales[kl] for k,v in losses[kl].items()})
-        if isinstance(losses[kl], dict): # unzip losses from losses[kl] dict
-          losses.update({k: v for k,v in losses[kl].items()})
-          losses.pop(kl)
-      model_loss = sum(scaled.values())
-
-    elif self.config.task == 'interaction_recon':
-      losses['dyn'] = self.rssm.dyn_loss(post_dict, prior_dict, **self.config.dyn_loss)
-      losses['rep'] = self.rssm.rep_loss(post_dict, prior_dict, **self.config.rep_loss)
-      for key, dist in dists.items():
-        loss = -dist.log_prob(data[key].astype(jnp.float32))
-        assert loss.shape == embed_dict.shape[:2], (key, loss.shape)
-        losses[key] = loss
-      scaled = {k: v * self.scales[k] for k, v in losses.items()}
-      model_loss = sum(scaled.values())
-
     # out is for the beginning of a-c training in imagination
     out = {'embed': embed_dict, 'post': post_dict, 'prior': prior_dict}
     out.update({f'{k}_loss': v for k, v in losses.items()})
@@ -458,11 +344,7 @@ class WorldModel(nj.Module):
     if self.config.task == 'interaction_prediction':
       for key, key_dict in post_dict.items():
         last_state_dict[key] = {k: v[:, -1] for k, v in key_dict.items()}
-    elif self.config.task == 'interaction_branch':
-      for key, key_dict in post_dict.items():
-        last_state_dict[key] = {k: v[:, -1] for k, v in key_dict.items()}
-    elif self.config.task == 'interaction_recon':
-      last_state_dict = {k: v[:, -1] for k, v in post_dict.items()}
+    
     last_action = data['action'][:, -1]
     state = last_state_dict, last_action
 
@@ -491,20 +373,6 @@ class WorldModel(nj.Module):
       # get start action from policy
       start_dict['action'] = policy(feats_dict, ego_attention_out)
 
-    elif self.config.task == 'interaction_branch':
-      # update mask for attention
-      feats_dict = {k: v for k,v in start_dict.items()}
-      feats_dict.update({
-                        'mask_vdi': start['mask_vdi'],
-                        'mask_vpi': start['mask_vpi'],
-                        })
-      ego_attention_out, ego_attention_mat = self.ego_attention_branch(sg(feats_dict))
-      start_dict['attention'] = ego_attention_out
-      start_dict['action'] = policy(feats_dict, ego_attention_out)
-
-    elif self.config.task == 'interaction_recon':
-      feats_dict = {k: v for k,v in start_dict.items()}
-      start_dict['action'] = policy(feats_dict)
     # print(mask_vdi.shape, start_dict['action'].shape)
     # print(start_dict.keys(), start_dict['ego']['deter'].shape, start_dict['ego']['stoch'].shape, start_dict['mask_vdi'].shape, start_dict['action'].shape)
 
@@ -525,27 +393,7 @@ class WorldModel(nj.Module):
         # get action for these imagined states
         action = policy(feats_dict, ego_attention_out)
         out = {**prior_dict, 'action': action, 'attention': ego_attention_out}
-
-      elif self.config.task == 'interaction_branch':
-        prior_dict = self.rssm.img_step(prev, prev.pop('action'))
-        feats_dict = {k: v for k,v in prior_dict.items()}
-        # NOTE: the mask of vdi and vpi is unchanged during imagination
-        feats_dict.update({
-                          'mask_vdi': start['mask_vdi'],
-                          'mask_vpi': start['mask_vpi'],
-                          })
-        # for actor, the gradient is not backpropagated to the world model
-        ego_attention_out, ego_attention_mat = self.ego_attention_branch(sg(feats_dict))
-        # get action for these imagined states
-        action = policy(feats_dict, ego_attention_out)
-        out = {**prior_dict, 'action': action, 'attention': ego_attention_out}
       
-      elif self.config.task == 'interaction_recon':
-        prior_dict = self.rssm.img_step(prev, prev.pop('action'))
-        feats_dict = {k: v for k,v in prior_dict.items()}
-        # get action for these imagined states
-        action = policy(feats_dict)
-        out = {**prior_dict, 'action': action}
       return out
     
     traj = jaxutils.scan(
@@ -558,20 +406,12 @@ class WorldModel(nj.Module):
       # for branch struchture
       for k, v in traj.items():
         traj_concat.update({k: {veh: jnp.concatenate([start_dict[k][veh][None], v[veh]], 0) for veh in v.keys()}} if isinstance(v, dict) else {k: jnp.concatenate([start_dict[k][None], v], 0)})
-    elif self.config.task == 'interaction_branch':
-      for k, v in traj.items():
-        traj_concat.update({k: {veh: jnp.concatenate([start_dict[k][veh][None], v[veh]], 0) for veh in v.keys()}} if isinstance(v, dict) else {k: jnp.concatenate([start_dict[k][None], v], 0)})
-    elif self.config.task == 'interaction_recon':
-      traj_concat = {k: jnp.concatenate([start_dict[k][None], v], 0) for k, v in traj.items()}
 
     # pridict ends or not for each imagined state and calculate discount weight for these states
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       cont = self.heads['cont'](traj_concat, traj_concat['attention']).mode()
-    elif self.config.task == 'interaction_branch':
-      cont = self.heads['cont'](traj_concat, traj_concat['attention']).mode()
-    elif self.config.task == 'interaction_recon':
-      cont = self.heads['cont'](traj_concat).mode()
+    
     traj_concat['cont'] = jnp.concatenate([first_cont[None], cont[1:]], 0)
     discount = 1 - 1 / self.config.horizon
     traj_concat['weight'] = jnp.cumprod(discount * traj_concat['cont'], 0) / discount
@@ -611,7 +451,7 @@ class WorldModel(nj.Module):
     metrics.update({f'{k}_loss_std': v.std() for k, v in losses.items()})
     # total model loss, after scale
     metrics['model_loss_mean'] = model_loss.mean()
-    metrics['model_loss_std'] = model_loss.std()
+    metrics['model_loss_std']  = model_loss.std()
     metrics['reward_max_data'] = jnp.abs(data['reward']).max()
     metrics['reward_max_pred'] = jnp.abs(dists['reward'].mean()).max()
 
@@ -643,14 +483,6 @@ class ImagActorCritic(nj.Module):
       self.actor = nets_PIWM.PIWMMLP(
           name='actor', dims='deter', shape=act_space.shape, **config.actor,
           dist=config.actor_dist_disc if disc else config.actor_dist_cont)
-    elif self.config.task == 'interaction_branch':
-      self.actor = nets_PIWM.PIWMMLP(
-          name='actor', dims='deter', shape=act_space.shape, **config.actor,
-          dist=config.actor_dist_disc if disc else config.actor_dist_cont)
-    elif self.config.task == 'interaction_recon':
-      self.actor = nets_original.MLP(
-          name='actor', dims='deter', shape=act_space.shape, **config.actor,
-          dist=config.actor_dist_disc if disc else config.actor_dist_cont)
     
     # TODO: what is retnorms?
     self.retnorms = {
@@ -666,10 +498,7 @@ class ImagActorCritic(nj.Module):
     # TODO: is this for eval only?
     if self.config.task == 'interaction_prediction':
       action = self.actor(state, attention)
-    elif self.config.task == 'interaction_branch':
-      action = self.actor(state, attention)
-    elif self.config.task == 'interaction_recon':
-      action = self.actor(state)
+    
     # TODO: carry is unchanged?
     return {'action': action}, carry
 
@@ -681,10 +510,7 @@ class ImagActorCritic(nj.Module):
         # ego attention itself as a part of a-c is trained during imagination, 
         # yet the gradients is not back propagated to the vpi parts world model
         policy = lambda s, att: self.actor(sg(s), att).sample(seed=nj.rng())
-      elif self.config.task == 'interaction_branch':
-        policy = lambda s, att: self.actor(sg(s), att).sample(seed=nj.rng())
-      elif self.config.task == 'interaction_recon':
-        policy = lambda s: self.actor(sg(s)).sample(seed=nj.rng())
+      
       # generate a trajectory in imagination
       traj = imagine(policy, start, self.config.imag_horizon)
       # calculate losses for actor and critic
@@ -718,10 +544,7 @@ class ImagActorCritic(nj.Module):
     if self.config.task == 'interaction_prediction':
       # NOTE: grad pass through ego_attention module in actor and critic and not back propagated to the vpi parts of world model
       policy = self.actor(sg(traj), traj['attention'])
-    elif self.config.task == 'interaction_branch':
-      policy = self.actor(sg(traj), traj['attention'])
-    elif self.config.task == 'interaction_recon':
-      policy = self.actor(sg(traj))
+    
     # calculate loss
     logpi = policy.log_prob(sg(traj['action']))[:-1]
     loss = {'backprop': -adv, 'reinforce': -logpi * sg(adv)}[self.grad]
@@ -748,7 +571,6 @@ class ImagActorCritic(nj.Module):
     return metrics
 
 # TODO: what is the difference between VFunction and ImagActorCritic?
-# 值函数实现
 class VFunction(nj.Module):
 
   def __init__(self, rewfn, config):
@@ -759,12 +581,6 @@ class VFunction(nj.Module):
     if self.config.task == 'interaction_prediction':
       self.net = nets_PIWM.PIWMMLP((), name='net', dims='deter', **self.config.critic)
       self.slow = nets_PIWM.PIWMMLP((), name='slow', dims='deter', **self.config.critic)
-    elif self.config.task == 'interaction_branch':
-      self.net = nets_PIWM.PIWMMLP((), name='net', dims='deter', **self.config.critic)
-      self.slow = nets_PIWM.PIWMMLP((), name='slow', dims='deter', **self.config.critic)
-    elif self.config.task == 'interaction_recon':
-      self.net = nets_original.MLP((), name='net', dims='deter', **self.config.critic)
-      self.slow = nets_original.MLP((), name='slow', dims='deter', **self.config.critic)
 
     # target update
     self.updater = jaxutils.SlowUpdater(
@@ -792,12 +608,6 @@ class VFunction(nj.Module):
     if self.config.task == 'interaction_prediction':
       v_dist = self.net(traj_slide, traj_slide['attention'])
       slow_dist = self.slow(traj_slide, traj_slide['attention'])
-    elif self.config.task == 'interaction_branch':
-      v_dist = self.net(traj_slide, traj_slide['attention'])
-      slow_dist = self.slow(traj_slide, traj_slide['attention'])
-    elif self.config.task == 'interaction_recon':
-      v_dist = self.net(traj_slide)
-      slow_dist = self.slow(traj_slide)
       
     # calculate loss
     loss = -v_dist.log_prob(sg(target))
@@ -822,12 +632,7 @@ class VFunction(nj.Module):
     if self.config.task == 'interaction_prediction':
       rew = self.rewfn(traj, traj['attention'])
       value = self.net(traj, traj['attention']).mean()
-    elif self.config.task == 'interaction_branch':
-      rew = self.rewfn(traj, traj['attention'])
-      value = self.net(traj, traj['attention']).mean()
-    elif self.config.task == 'interaction_recon':
-      rew = self.rewfn(traj)
-      value = self.net(traj).mean()
+    
     assert len(rew) == len(traj['action']) - 1, (
         'should provide rewards for all but last action')
     # calculate discounted returns
