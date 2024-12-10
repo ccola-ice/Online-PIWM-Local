@@ -178,7 +178,7 @@ def draw_uncontrolled_vehicle(motionstate_dict, polygon_dict, patch_dict, text_d
         # color, yellow for surrounding otherwise blue
         # TODO: a proper way to set colors
         if v_id in surrounding_vehicle_id_list:
-            color = 'orange' if v_id in surrounding_vehicle_id_list[:vdi_num] else 'y'
+            color = 'purple' if v_id in surrounding_vehicle_id_list[:vdi_num] else 'cyan'
         else:
             color = 'b'
         # draw uncotrolled vehicles
