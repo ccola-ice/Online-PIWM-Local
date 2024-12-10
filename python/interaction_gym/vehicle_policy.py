@@ -6,7 +6,7 @@ from enum import Enum
 import shapely.geometry
 import shapely.affinity
 
-def detect_lane_obstacle(npc_info, ego_info, extension_factor=3.5, margin=1.02):
+def detect_lane_obstacle(vdi_info, ego_info, extension_factor=3.5, margin=1.02):
     """
     This function identifies if an obstacle is present in front of the reference actor (only consider ego car now)
     """
@@ -16,29 +16,29 @@ def detect_lane_obstacle(npc_info, ego_info, extension_factor=3.5, margin=1.02):
     ego_psi_rad = ego_info._current_state.psi_rad
     ego_bbox = [(ego_shape[0]*math.cos(ego_psi_rad) + ego_shape[1]*math.sin(ego_psi_rad))/2, (ego_shape[0]*math.sin(ego_psi_rad) + ego_shape[1]*math.cos(ego_psi_rad))/2] # polygon extent in x and y axis from center vehicle point (like Carla)
 
-    # npc
-    npc_location = [npc_info._current_state.x, npc_info._current_state.y]
-    npc_shape = [npc_info._length, npc_info._width]
-    npc_psi_rad = npc_info._current_state.psi_rad
-    npc_bbox = [(npc_shape[0]*math.cos(npc_psi_rad) + npc_shape[1]*math.sin(npc_psi_rad))/2, (npc_shape[0]*math.sin(npc_psi_rad) + npc_shape[1]*math.cos(npc_psi_rad))/2] # polygon extent in x and y axis from center vehicle point (like Carla)
+    # vdi
+    vdi_location = [vdi_info._current_state.x, vdi_info._current_state.y]
+    vdi_shape = [vdi_info._length, vdi_info._width]
+    vdi_psi_rad = vdi_info._current_state.psi_rad
+    vdi_bbox = [(vdi_shape[0]*math.cos(vdi_psi_rad) + vdi_shape[1]*math.sin(vdi_psi_rad))/2, (vdi_shape[0]*math.sin(vdi_psi_rad) + vdi_shape[1]*math.cos(vdi_psi_rad))/2] # polygon extent in x and y axis from center vehicle point (like Carla)
     
-    npc_vector = np.array([math.cos(npc_psi_rad), math.sin(npc_psi_rad)])
-    npc_vector = npc_vector / np.linalg.norm(npc_vector) # normlization, maybe surplus
-    npc_vector = npc_vector * (extension_factor - 1) * npc_bbox[0]
-    # TODO: check if the fake_npc_location is correct (+ OR - ???)
-    fake_npc_location = npc_location - npc_vector # the virtual "head" location of the vehicle as the true location of npcchaoshen 
+    vdi_vector = np.array([math.cos(vdi_psi_rad), math.sin(vdi_psi_rad)])
+    vdi_vector = vdi_vector / np.linalg.norm(vdi_vector) # normlization, maybe surplus
+    vdi_vector = vdi_vector * (extension_factor - 1) * vdi_bbox[0]
+    # TODO: check if the fake_vdi_location is correct (+ OR - ???)
+    fake_vdi_location = vdi_location - vdi_vector # the virtual "head" location of the vehicle as the true location of vdichaoshen 
 
-    # decide whether stop the npc car
+    # decide whether stop the vdi car
     is_hazard = False
-    distance = math.sqrt((fake_npc_location[0] - ego_location[0])**2 + (fake_npc_location[1] - ego_location[1])**2)
+    distance = math.sqrt((fake_vdi_location[0] - ego_location[0])**2 + (fake_vdi_location[1] - ego_location[1])**2)
     if distance < 50:
         overlap_ego = RotatedRectangle(
             ego_location[0], ego_location[1],
             2 * margin * ego_bbox[0], 2 * margin * ego_bbox[1], ego_psi_rad)
-        overlap_npc = RotatedRectangle(
-            npc_location[0], npc_location[1],
-            2 * margin * npc_bbox[0] * extension_factor, 2 * margin * npc_bbox[1], npc_psi_rad)
-        overlap_area = overlap_ego.intersection(overlap_npc).area
+        overlap_vdi = RotatedRectangle(
+            vdi_location[0], vdi_location[1],
+            2 * margin * vdi_bbox[0] * extension_factor, 2 * margin * vdi_bbox[1], vdi_psi_rad)
+        overlap_area = overlap_ego.intersection(overlap_vdi).area
         # print("overlap_area: ", overlap_area)
         if overlap_area > 2:
             is_hazard = True
@@ -68,11 +68,11 @@ class RotatedRectangle(object):
         rc = shapely.affinity.rotate(c, self.angle)
         return shapely.affinity.translate(rc, self.c_x, self.c_y)
 
-    def intersection(self, other):
+    def intersection(self, vpi):
         """
         Obtain a intersection point between two contour.
         """
-        return self.get_contour().intersection(other.get_contour())
+        return self.get_contour().intersection(vpi.get_contour())
 
 
 class NpcState(Enum):
@@ -97,17 +97,17 @@ class NpcPolicy(object):
     def get_behavior_type(self):
         return self.actor_behavior
     
-    def run_step(self, npc_info, ego_info):
-        npc_x = npc_info._current_state.x
-        npc_speed = math.sqrt(npc_info._current_state.vx**2 + npc_info._current_state.vy**2)
-        npc_psi_rad = npc_info._current_state.psi_rad
+    def run_step(self, vdi_info, ego_info):
+        vdi_x = vdi_info._current_state.x
+        vdi_speed = math.sqrt(vdi_info._current_state.vx**2 + vdi_info._current_state.vy**2)
+        vdi_psi_rad = vdi_info._current_state.psi_rad
         
         ego_y = ego_info._current_state.y
         ego_speed = math.sqrt(ego_info._current_state.vx**2 + ego_info._current_state.vy**2)
         ego_psi_rad = ego_info._current_state.psi_rad
 
         def at_intersection():
-            return (1020 > npc_x > 980)
+            return (1020 > vdi_x > 980)
 
         def angle_between(v1, v2):
             v1_u = v1 / np.linalg.norm(v1)
@@ -116,15 +116,15 @@ class NpcPolicy(object):
 
         # calculat angle between vehicle and ego
         ego_vehicle_vector = [math.cos(ego_psi_rad), math.sin(ego_psi_rad)] # ego.get_transform().get_forward_vector()
-        npc_vehicle_vector = [math.cos(npc_psi_rad), math.sin(npc_psi_rad)]
-        angle = angle_between(ego_vehicle_vector, npc_vehicle_vector)
+        vdi_vehicle_vector = [math.cos(vdi_psi_rad), math.sin(vdi_psi_rad)]
+        angle = angle_between(ego_vehicle_vector, vdi_vehicle_vector)
 
         # detect ego + ego has speed (+ ego location is away from start) 
-        if detect_lane_obstacle(npc_info, ego_info, extension_factor = 1.0, margin = 2) and ego_speed > 1:
+        if detect_lane_obstacle(vdi_info, ego_info, extension_factor = 1.0, margin = 2) and ego_speed > 1:
             target_speed = 0
             return target_speed
 
-        # change npc behavior
+        # change vdi behavior
         if at_intersection() and self.behavior_state == NpcState.STARTING:
             rand = random.uniform(0, 1)
             if angle < 175 and ego_y < 1010:
@@ -140,7 +140,7 @@ class NpcPolicy(object):
 
         if self.behavior_state == NpcState.STOPPING:
             # ego and target vehicle are all wait at interaction
-            if ego_speed < 0.01 and npc_speed < 0.01:
+            if ego_speed < 0.01 and vdi_speed < 0.01:
                 self.stop_count += 1
             # going if ego vehicle passes intersection or target vehicle waits too long
             if  ego_y < 986 or (self.stop_count >= self.stop_thresh): 

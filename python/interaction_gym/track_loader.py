@@ -86,13 +86,13 @@ class DatasetLoader():
         self._extract_data_from_file()
         return self._gt_csv_index
 
-    def read_track_file(self, npc_type, route_type):
-        if npc_type == 'react':
+    def read_track_file(self, vdi_type, route_type):
+        if vdi_type == 'react':
             self._gt_csv_index = '5'
             track_file_path = os.path.join(self._gt_tracks_dir, "vehicle_tracks_" + str(self._gt_csv_index).zfill(3) + ".csv")
             track_dict = read_tracks(track_file_path)
             self._possible_ego_id = [41]
-        elif npc_type == 'record' and route_type == 'ground_truth':
+        elif vdi_type == 'record' and route_type == 'ground_truth':
             track_file_path = os.path.join(self._gt_tracks_dir, "vehicle_tracks_" + str(self._gt_csv_index).zfill(3) + ".csv")
             track_dict = read_tracks(track_file_path)
             if not self._eval:
@@ -105,7 +105,7 @@ class DatasetLoader():
                 if not self._possible_ego_id:
                     self._possible_ego_id = self._get_possible_ego_id()
         else:
-            print('please check if the npc_type and route_type are correct')
+            print('please check if the vdi_type and route_type are correct')
         
         # self._possible_ego_id = [21]
 
@@ -227,18 +227,18 @@ class PredictionLoader():
         self._extract_data_from_files(file_name)
         return self._gt_csv_index
 
-    def read_track_file(self, npc_type, route_type):
-        if npc_type == 'react':
+    def read_track_file(self, vdi_type, route_type):
+        if vdi_type == 'react':
             self._gt_csv_index = '5'
             track_file_path = os.path.join(self._gt_tracks_dir, "vehicle_tracks_" + str(self._gt_csv_index).zfill(3) + ".csv")
             track_dict = read_tracks(track_file_path)
             self._possible_ego_id = [41] # force it to be 41
-        elif npc_type == 'record' and route_type == 'ground_truth':
+        elif vdi_type == 'record' and route_type == 'ground_truth':
             track_file_path = os.path.join(self._gt_tracks_dir, "vehicle_tracks_" + str(self._gt_csv_index).zfill(3) + ".csv")
             track_dict = read_tracks(track_file_path)
             # if self._load_mode == 'both' or self._load_mode == 'pedestrian':
             #     self._pedestrian_dict = read_pedestrian(self._pedestrian_file_name)
-        elif npc_type == 'record' and route_type == 'predict':
+        elif vdi_type == 'record' and route_type == 'predict':
             track_dict = read_trajectory(self.data_file)
         return track_dict
 

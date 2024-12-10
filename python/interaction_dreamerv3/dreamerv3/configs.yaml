@@ -58,7 +58,7 @@ defaults:
     minecraft: {size: [64, 64], break_speed: 100.0}
     dmc: {size: [64, 64], repeat: 2, camera: -1}
     loconav: {size: [64, 64], repeat: 2, camera: -1}
-    interaction: {map_name: DR_USA_Intersection_EP0, load_mode: vehicle, loader_type: prediction, state_frame: global, drive_as_record: False, continous_action: False, control_steering: False, max_steps: None, npc_type: react, npc_num: 5, other_num: 5, route_type: ground_truth, visualization: True, ghost_visualization: False, route_visualization: True, route_bound_visualization: False, port: 5561, only_trouble: False, eval: False, decoder_target: predict, predict_horizen: 20}
+    interaction: {map_name: DR_USA_Intersection_EP0, load_mode: vehicle, loader_type: prediction, state_frame: global, drive_as_record: False, continous_action: False, control_steering: False, max_steps: None, vdi_type: react, vdi_num: 5, vpi_num: 5, route_type: ground_truth, visualization: True, ghost_visualization: False, route_visualization: True, route_bound_visualization: False, port: 5561, only_trouble: False, eval: False, decoder_target: predict, predict_horizen: 20}
 
   # Agent
   task_behavior: Greedy
@@ -131,10 +131,10 @@ interaction_prediction:
     #/home/zb/02_PIWM/Dream_to_Drive_with_PIWM/paper_models/comparison/big_set/20241017_test/checkpoint_500k.ckpt
 
     # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/predict/12.23_7action_1raccweight_4/checkpoint_500k.ckpt
-    # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/3.28_npc:other=9:1_5/checkpoint_500k.ckpt
+    # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/3.28_vdi:vpi=9:1_5/checkpoint_500k.ckpt
   env:
     #8888
-    interaction: {port: 5561, state_frame: global, npc_type: record, loader_type: prediction, npc_num: 5, other_num: 5, decoder_target: predict, predict_horizen: 20, visualization: False, ghost_visualization: True}   
+    interaction: {port: 5561, state_frame: global, vdi_type: record, loader_type: prediction, vdi_num: 6, vpi_num: 6, decoder_target: predict, predict_horizen: 20, visualization: False, ghost_visualization: True}   
     # loader_type: prediction、visualization: True
   replay_size: 2e6
 
@@ -148,7 +148,7 @@ interaction_prediction:
   # World model
   decode_target: predict
   rssm: {deter: 200, units: 200, stoch: 16, classes: 16}
-  # TODO: encoder/decoder keys should be easy to change according to npc_num and other num
+  # TODO: encoder/decoder keys should be easy to change according to vdi_num and vpi num
   # 55, original
   encoder:
       mlp_keys: __ENCODER_MLP_KEYS__
@@ -161,33 +161,6 @@ interaction_prediction:
       cnn_keys: '$^'
       mlp_layers: 4
       mlp_units: 200
-
-  # encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5','other_1','other_2','other_3','other_4','other_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction','npc_4_prediction','npc_5_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-
-  # 19
-  # encoder: {mlp_keys: ['ego','npc_1','other_1','other_2','other_3','other_4','other_5','other_6','other_7','other_8','other_9'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-
-  # 37
-  # encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','other_1','other_2','other_3','other_4','other_5','other_6','other_7'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-
-  # 46
-  # encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','other_1','other_2','other_3','other_4','other_5','other_6'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction','npc_4_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-
-  # 64
-  # encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5', 'npc_6', 'other_1','other_2','other_3','other_4'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction','npc_4_prediction','npc_5_prediction', 'npc_6_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-  
-  # 73
-  # encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5','npc_6','npc_7','other_1','other_2','other_3'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction','npc_4_prediction','npc_5_prediction','npc_6_prediction','npc_7_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-
-  # 91
-  # encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5','npc_6','npc_7','npc_8','npc_9','other_1'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200} # 
-  # decoder: {mlp_keys: ['ego_prediction','npc_1_prediction','npc_2_prediction','npc_3_prediction','npc_4_prediction','npc_5_prediction','npc_6_prediction','npc_7_prediction','npc_8_prediction','npc_9_prediction'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
 
   reward_head: {layers: 4, units: 400}
   cont_head: {layers: 4, units: 400}
@@ -216,7 +189,7 @@ interaction_branch:
     
     # from_checkpoint: /home/gdg/NewDisc/Dream_to_Drive_with_PIWM/paper_models/ablation_on_branch_sturcture/small_set/Two_branch/9.8_two_branch_4/checkpoint_500k.ckpt
   env:
-    interaction: {port: 5557, state_frame: ego, npc_type: record, loader_type: prediction, npc_num: 5, other_num: 5, decoder_target: recon, predict_horizen: 0, visualization: False}
+    interaction: {port: 5557, state_frame: ego, vdi_type: record, loader_type: prediction, vdi_num: 5, vpi_num: 5, decoder_target: recon, predict_horizen: 0, visualization: False}
   replay_size: 2e6
 
   # Env num setting
@@ -229,9 +202,9 @@ interaction_branch:
   # World model
   decode_target: recon
   rssm: {deter: 200, units: 200, stoch: 16, classes: 16}
-  # TODO: encoder/decoder keys should be easy to change according to npc_num and other num
-  encoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5','other_1','other_2','other_3','other_4','other_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
-  decoder: {mlp_keys: ['ego','npc_1','npc_2','npc_3','npc_4','npc_5','other_1','other_2','other_3','other_4','other_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
+  # TODO: encoder/decoder keys should be easy to change according to vdi_num and vpi num
+  encoder: {mlp_keys: ['ego','vdi_1','vdi_2','vdi_3','vdi_4','vdi_5','vpi_1','vpi_2','vpi_3','vpi_4','vpi_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
+  decoder: {mlp_keys: ['ego','vdi_1','vdi_2','vdi_3','vdi_4','vdi_5','vpi_1','vpi_2','vpi_3','vpi_4','vpi_5'], cnn_keys: '$^', mlp_layers: 4, mlp_units: 200}
   reward_head: {layers: 4, units: 400}
   cont_head: {layers: 4, units: 400}
   attention: {layers: 1, heads: 2, units_per_head: 200, bias: False}
@@ -262,7 +235,7 @@ interaction_recon:
     
   env:
                       #8888
-    interaction: {port: 5561, state_frame: ego, npc_type: record, loader_type: prediction, npc_num: 5, other_num: 5, decoder_target: recon, predict_horizen: 0, visualization: True, ghost_visualization: True}
+    interaction: {port: 5561, state_frame: ego, vdi_type: record, loader_type: prediction, vdi_num: 5, vpi_num: 5, decoder_target: recon, predict_horizen: 0, visualization: True, ghost_visualization: True}
   replay_size: 2e6
 
   # Env num setting

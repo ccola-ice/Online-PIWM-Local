@@ -22,8 +22,8 @@ class PIWMRSSM(nj.Module):
       self, shapes, pred_attention, deter=1024, stoch=32, classes=32, unroll=False, initial='learned',
       unimix=0.01, action_clip=1.0, **kw):
     
-    # multi heads of rssm(ego, npc_1...npc_n, other_1....other_n)
-    rssm_included = [k for k in shapes.keys() if k.startswith(('ego', 'npc', 'other')) and 'prediction' not in k]
+    # multi heads of rssm(ego, vdi_1...vdi_n, vpi_1....vpi_n)
+    rssm_included = [k for k in shapes.keys() if k.startswith(('ego', 'vdi', 'vpi')) and 'prediction' not in k]
     self._keys = [k for k in shapes.keys() if k in rssm_included]
     print('RSSM keys:', self._keys) # TODO:RSSM keys ?
 
@@ -50,8 +50,8 @@ class PIWMRSSM(nj.Module):
     return state_dict
   
   def _get_post(self, key, prior, pred_attention, embed):
-    # 获取对应的前缀(ego/npc/other)
-    prefix = 'ego' if key.startswith('ego') else 'npc' if key.startswith('npc_') else 'other'
+    # 获取对应的前缀(ego/vdi/vpi)
+    prefix = 'ego' if key.startswith('ego') else 'vdi' if key.startswith('vdi_') else 'vpi'
     # 特征拼接
     x = jnp.concatenate([prior['deter'], pred_attention, embed], -1)
     # 获取观测输出
@@ -62,9 +62,9 @@ class PIWMRSSM(nj.Module):
     stoch = dist.sample(seed=nj.rng())
     return {'stoch': stoch, 'deter': prior['deter'], **stats}
 
-  def observe(self, embed, action, is_first, should_init_npc, should_init_other, mask_npc, mask_other, state_dict=None):
+  def observe(self, embed, action, is_first, should_init_vdi, should_init_vpi, mask_vdi, mask_vpi, state_dict=None):
     # embed: x_t in paper, action: a_t in paper
-    # ego state and npc state should be divided, also, npc state should be divided into each npc
+    # ego state and vdi state should be divided, also, vdi state should be divided into each vdi
     if state_dict is None: 
       state_dict = self.initial(batch_size=action.shape[0]) # size is batch_size (16 by default)
 
@@ -72,7 +72,7 @@ class PIWMRSSM(nj.Module):
     # TODO: notice for obs_step, the start is state_dict, not tuple(state_dict, state_dict), figure out why it works like this
     step = lambda prev, inputs: self.obs_step(prev[0], *inputs)
     # 对所有的输入交换前两个维度，使其变为(64, 16, xx)
-    inputs = self._swap(action), self._swap(embed), self._swap(is_first), self._swap(should_init_npc), self._swap(should_init_other), self._swap(mask_npc), self._swap(mask_other)
+    inputs = self._swap(action), self._swap(embed), self._swap(is_first), self._swap(should_init_vdi), self._swap(should_init_vpi), self._swap(mask_vdi), self._swap(mask_vpi)
     start = state_dict, state_dict
 
     # 从 start 开始，按顺序将 inputs 的每个时间步输入到 step 函数，就是obs_step中。
@@ -96,9 +96,9 @@ class PIWMRSSM(nj.Module):
     return prior_dict
 
   # 进行一个观测步训练
-  # 输入：前一个状态h(t-1)，前一个动作a(t-1)，嵌入字典e(t)，是否为第一帧，是否初始化npc，是否初始化other，npc掩码，other掩码
+  # 输入：前一个状态h(t-1)，前一个动作a(t-1)，嵌入字典e(t)，是否为第一帧，是否初始化vdi，是否初始化vpi，vdi掩码，vpi掩码
   # 输出：z_t z_t_head
-  def obs_step(self, prev_state, prev_action, embed_dict, is_first, should_init_npc, should_init_other, mask_npc, mask_other):
+  def obs_step(self, prev_state, prev_action, embed_dict, is_first, should_init_vdi, should_init_vpi, mask_vdi, mask_vpi):
        
     # change data type
     is_first = cast(is_first)
@@ -124,32 +124,32 @@ class PIWMRSSM(nj.Module):
     # 同理，如果是第一帧，则为prev_state = prev_state + self._mask(self.initial(len(is_first)),1.0)
     # 如果不是第一帧，   则为prev_state = prev_state + self._mask(self.initial(len(is_first)),0.0)
 
-    # initialize latent state for new or zero-padded(masked) npcs/others
+    # initialize latent state for new or zero-padded(masked) vdis/vpis
     # TODO: initial muilple times when is_first is True, waste of calculation
-    should_init_npc, should_init_other = cast(should_init_npc), cast(should_init_other) #should_init_npc:(16,5) should_init_other:(16,5)
+    should_init_vdi, should_init_vpi = cast(should_init_vdi), cast(should_init_vpi) #should_init_vdi:(16,5) should_init_vpi:(16,5)
     for key in prev_state.keys():
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1]) # npc_index:1
-        should_init = should_init_npc[:, npc_index - 1] # should_init:(float16[16])
-        # for npcs who are new to the observation, set its state to 0 first
-        zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key]) # zero_paded_state = self._mask(prev_state['npc_1'], 1.0 - should_init)
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1]) # vdi_index:1
+        should_init = should_init_vdi[:, vdi_index - 1] # should_init:(float16[16])
+        # for vdis who are new to the observation, set its state to 0 first
+        zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key]) # zero_paded_state = self._mask(prev_state['vdi_1'], 1.0 - should_init)
         # and then initialize it using rssm initial function
-        prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init))) # prev_state['npc_1'] = zero_paded_state + self._mask(self._initial_single_state('npc_1', 16), should_init)
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        should_init = should_init_other[:, other_index - 1]
+        prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init))) # prev_state['vdi_1'] = zero_paded_state + self._mask(self._initial_single_state('vdi_1', 16), should_init)
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        should_init = should_init_vpi[:, vpi_index - 1]
         zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key])
         prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init)))
     
     # 计算当前的先验状态并预测注意力值
     # get prior ^z(t)
-    prior_dict, pred_attention_dict = self.img_step(prev_state, prev_action, mask_npc, mask_other)
+    prior_dict, pred_attention_dict = self.img_step(prev_state, prev_action, mask_vdi, mask_vpi)
     
     post_dict = {}# 
     # different branches
     # TODO: merge codes below
     for key in prior_dict.keys():
-      if key.startswith(('ego', 'npc_', 'other_')):
+      if key.startswith(('ego', 'vdi_', 'vpi_')):
         prior = prior_dict[key]
         post = self._get_post(
             key,
@@ -161,7 +161,7 @@ class PIWMRSSM(nj.Module):
 
     return cast(post_dict), cast(prior_dict) 
   
-  def img_step(self, prev_state_dict, prev_action, mask_npc, mask_other):
+  def img_step(self, prev_state_dict, prev_action, mask_vdi, mask_vpi):
     # 输入
     # change data type
     prev_action = cast(prev_action)
@@ -171,7 +171,7 @@ class PIWMRSSM(nj.Module):
           self._action_clip, jnp.abs(prev_action)))
 
     def process_prior(self, key, feats_dict, pred_attention_dict, deter_dict):
-      # 获取前缀(ego/npc/other)
+      # 获取前缀(ego/vdi/vpi)
       prefix = key.split('_')[0] if '_' in key else key
       
       # 拼接特征和注意力
@@ -190,10 +190,10 @@ class PIWMRSSM(nj.Module):
           **stats
       }
 
-    # different branch for ego, npc_1...npc_n, other_1...other_n state
+    # different branch for ego, vdi_1...vdi_n, vpi_1...vpi_n state
     deter_dict = {}
     for key in prev_state_dict.keys():
-      if key.startswith(('ego', 'npc_', 'other_')):
+      if key.startswith(('ego', 'vdi_', 'vpi_')):
         prev_stoch = prev_state_dict[key]['stoch']
         deter = prev_state_dict[key]['deter']
         
@@ -215,15 +215,15 @@ class PIWMRSSM(nj.Module):
     # 计算attention
     feats_dict = {k: v['out'] for k,v in deter_dict.items()}
     feats_dict.update({
-        'mask_npc': mask_npc,
-        'mask_other': mask_other
+        'mask_vdi': mask_vdi,
+        'mask_vpi': mask_vpi
     })
     pred_attention_dict, pred_attention_dict_post, _ = self._pred_attention(feats_dict)
 
     # 计算prior
     prior_dict = {}
     for key in feats_dict.keys():
-        if key.startswith(('ego', 'npc_', 'other_')):
+        if key.startswith(('ego', 'vdi_', 'vpi_')):
             prior = process_prior(self, key, feats_dict, pred_attention_dict, deter_dict)
             prior_dict[key] = prior
 
@@ -252,15 +252,15 @@ class PIWMRSSM(nj.Module):
         x = self.get('ego_img_out', Linear, **self._kw)(x)
         stats = self._stats('ego_img_stats', x)
         dist = self.get_dist(stats)
-      elif key.startswith('npc_'):
+      elif key.startswith('vdi_'):
         x = jnp.concatenate([deter, attention], -1) if attention is not None else deter
-        x = self.get('npc_img_out', Linear, **self._kw)(x)
-        stats = self._stats('npc_img_stats', x)
+        x = self.get('vdi_img_out', Linear, **self._kw)(x)
+        stats = self._stats('vdi_img_stats', x)
         dist = self.get_dist(stats)
-      elif key.startswith('other_'):
+      elif key.startswith('vpi_'):
         x = jnp.concatenate([deter, attention], -1) if attention is not None else deter
-        x = self.get('other_img_out', Linear, **self._kw)(x)
-        stats = self._stats('other_img_stats', x)
+        x = self.get('vpi_img_out', Linear, **self._kw)(x)
+        stats = self._stats('vpi_img_stats', x)
         dist = self.get_dist(stats)
     return cast(dist.mode())
   
@@ -355,13 +355,13 @@ class PIWMRSSM(nj.Module):
     else:
       return swap(input)
     
-  def dyn_loss(self, post_dict, prior_dict, mask_npc=1, mask_other=1, impl='kl', free=1.0):
+  def dyn_loss(self, post_dict, prior_dict, mask_vdi=1, mask_vpi=1, impl='kl', free=1.0):
     # get loss dims
     loss_dims = post_dict['ego']['deter'].shape[:2]
     loss_dict = {}
-    # sum up losses for npcs or others branch
-    npc_dyn_kl_loss = jnp.zeros(loss_dims)
-    other_dyn_kl_loss = jnp.zeros(loss_dims)
+    # sum up losses for vdis or vpis branch
+    vdi_dyn_kl_loss = jnp.zeros(loss_dims)
+    vpi_dyn_kl_loss = jnp.zeros(loss_dims)
     for key in post_dict.keys():
       # how to calculate dyn loss, impl is 'kl' by default
       if impl == 'kl':
@@ -373,31 +373,31 @@ class PIWMRSSM(nj.Module):
       # kl free
       if free:
         loss = jnp.maximum(loss, free)
-      # npc sum up
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        mask = mask_npc[:, :, npc_index - 1]
-        npc_dyn_kl_loss += loss * mask
-        loss_dict.update({'npc_dyn_kl': npc_dyn_kl_loss})
-      # other sum up
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        mask = mask_other[:, :, other_index - 1]
-        other_dyn_kl_loss += loss * mask
-        loss_dict.update({'other_dyn_kl': other_dyn_kl_loss})
+      # vdi sum up
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        mask = mask_vdi[:, :, vdi_index - 1]
+        vdi_dyn_kl_loss += loss * mask
+        loss_dict.update({'vdi_dyn_kl': vdi_dyn_kl_loss})
+      # vpi sum up
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        mask = mask_vpi[:, :, vpi_index - 1]
+        vpi_dyn_kl_loss += loss * mask
+        loss_dict.update({'vpi_dyn_kl': vpi_dyn_kl_loss})
       # ego
       else:
         loss_dict.update({key + '_dyn_kl': loss})
     # print(loss_dict.keys())
     return loss_dict
 
-  def rep_loss(self, post_dict, prior_dict, mask_npc=1, mask_other=1, impl='kl', free=1.0):
+  def rep_loss(self, post_dict, prior_dict, mask_vdi=1, mask_vpi=1, impl='kl', free=1.0):
     # get loss dims
     loss_dims = post_dict['ego']['deter'].shape[:2]
     loss_dict = {}
-    # sum up losses for npcs or others branch
-    npc_rep_kl_loss = jnp.zeros(loss_dims)
-    other_rep_kl_loss = jnp.zeros(loss_dims)
+    # sum up losses for vdis or vpis branch
+    vdi_rep_kl_loss = jnp.zeros(loss_dims)
+    vpi_rep_kl_loss = jnp.zeros(loss_dims)
     for key in post_dict.keys():
       # how to calculate rep loss, impl is 'kl' by default
       if impl == 'kl':
@@ -414,18 +414,18 @@ class PIWMRSSM(nj.Module):
       # kl free
       if free:
         loss = jnp.maximum(loss, free)
-      # npc sum up
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        mask = mask_npc[:, :, npc_index - 1]
-        npc_rep_kl_loss += loss * mask
-        loss_dict.update({'npc_rep_kl': npc_rep_kl_loss})
-      # other sum up
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        mask = mask_other[:, :, other_index - 1]
-        other_rep_kl_loss += loss * mask
-        loss_dict.update({'other_rep_kl': other_rep_kl_loss})
+      # vdi sum up
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        mask = mask_vdi[:, :, vdi_index - 1]
+        vdi_rep_kl_loss += loss * mask
+        loss_dict.update({'vdi_rep_kl': vdi_rep_kl_loss})
+      # vpi sum up
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        mask = mask_vpi[:, :, vpi_index - 1]
+        vpi_rep_kl_loss += loss * mask
+        loss_dict.update({'vpi_rep_kl': vpi_rep_kl_loss})
       # ego
       else:
         loss_dict.update({key + '_rep_kl': loss})
@@ -481,11 +481,11 @@ class PIWMEncoder(nj.Module):
       self._traj_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=symlog_inputs, name='traj_mlp')
       # self._traj_mlp = MLP():实例化MLP类，同时初始化
 
-      # for ego, npc and other features, using different mlp
-      # 分别定义ego、npc和other的MLP编码器，对应论文中的ego、vpi和vdi，每个编码器由两层MLP组成
+      # for ego, vdi and vpi features, using different mlp
+      # 分别定义ego、vdi和vpi的MLP编码器，对应论文中的ego、vpi和vdi，每个编码器由两层MLP组成
       self._ego_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='ego_mlp')
-      self._npc_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='npc_mlp')
-      self._other_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='other_mlp')
+      self._vdi_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='vdi_mlp')
+      self._vpi_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='vpi_mlp')
       
       # TODO: map info
       # self._map_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=symlog_inputs, name='map_mlp')
@@ -516,15 +516,15 @@ class PIWMEncoder(nj.Module):
     if self.mlp_shapes:
       for key in self.mlp_shapes: # 遍历向量(mlp_shapes)输入
         ob = jaxutils.cast_to_compute(data[key].astype(f32)) # 对要处理的输入数据类型转换
-        if key.startswith(('ego', 'npc_', 'other_')): # 筛选ego、npc和other的MLP编码器
+        if key.startswith(('ego', 'vdi_', 'vpi_')): # 筛选ego、vdi和vpi的MLP编码器
           traj_features = self._traj_mlp(ob) # 获取共享轨迹编码器的输出特征
           traj_features = traj_features.reshape((traj_features.shape[0], -1)) #重塑形状 output shape: (batch_size, 512)
           if key.startswith('ego'):
             features = self._ego_mlp(traj_features)   # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_ego
-          elif key.startswith('npc_'):
-            features = self._npc_mlp(traj_features)   # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_vdi
-          elif key.startswith('other_'):
-            features = self._other_mlp(traj_features) # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_vpi
+          elif key.startswith('vdi_'):
+            features = self._vdi_mlp(traj_features)   # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_vdi
+          elif key.startswith('vpi_'):
+            features = self._vpi_mlp(traj_features) # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_vpi
         else:
           # features = self._map_mlp(ob)
           pass
@@ -549,7 +549,7 @@ def multi_head_attention(q, k, v, mask, drop_out=0.1):
 
 # 多头自注意力机制的实现，对应论文PIWM中的Self-Attention
 class PredictAttention(nj.Module):
-  # self-attention, produce ego and npc's attention value for future prediciton task
+  # self-attention, produce ego and vdi's attention value for future prediciton task
   def __init__(
     self, shape, layers, heads, units_per_head, inputs=['tensor'], dims=None, 
     symlog_inputs=False, **kw):
@@ -573,30 +573,30 @@ class PredictAttention(nj.Module):
     self._dist = {k: v for k, v in kw.items() if k in distkeys}
     self.out_dim = self._heads * self._units_per_head # 输出维度：注意力头数量 × 每个头的特征维度
   
-  # 处理ego与npc和other的特征
+  # 处理ego与vdi和vpi的特征
   def __call__(self, inputs_dict):
     # 1.输入预处理
     # preprocess inputs
     # feature_dict = {key: self._inputs(value) for key, value in inputs_dict.items() if isinstance(value, dict)}
-    feature_dict = {key: value for key, value in inputs_dict.items() if key.startswith(('ego', 'npc_', 'other_'))} # 筛选保留inputs_dict中的以ego、npc_和other_开头的键值对
+    feature_dict = {key: value for key, value in inputs_dict.items() if key.startswith(('ego', 'vdi_', 'vpi_'))} # 筛选保留inputs_dict中的以ego、vdi_和vpi_开头的键值对
     if self._symlog_inputs: # 是否对数变换
       feature_dict = {key: jaxutils.symlog(value) for key, value in feature_dict.items()}
     
     # 2.特征拼接
-    # use attention mechanism to fuse ego and npc features together
-    npc_mask = inputs_dict['mask_npc']
-    npc_num = npc_mask.shape[-1]
-    other_mask = inputs_dict['mask_other']
-    other_num = other_mask.shape[-1]
-    # concat ego and npc features together in entity dimension
+    # use attention mechanism to fuse ego and vdi features together
+    vdi_mask = inputs_dict['mask_vdi']
+    vdi_num = vdi_mask.shape[-1]
+    vpi_mask = inputs_dict['mask_vpi']
+    vpi_num = vpi_mask.shape[-1]
+    # concat ego and vdi features together in entity dimension
     # 将feature_dict中的所有value在倒数第2个i位置新插入一个新维度，比如，value原来的维度是2*3(2,3)的数组，新的就变成 2*1*3(2,1,3)
     feature_dict = {key: jnp.expand_dims(value, axis=-2) for key, value in feature_dict.items()} # add entity dimension
 
-    # 拼接ego与npc和other车辆的特征
-    # 特征拼接，ego与npc和other车辆的特征
-    # vehicle_features_q = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'npc_{i+1}'] for i in range(npc_num)], axis=-2)
-    vehicle_features_q = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'npc_{i+1}'] for i in range(npc_num)] + [feature_dict[f'other_{i+1}'] for i in range(other_num)], axis=-2)
-    vehicle_features_kv = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'npc_{i+1}'] for i in range(npc_num)] + [feature_dict[f'other_{i+1}'] for i in range(other_num)], axis=-2)
+    # 拼接ego与vdi和vpi车辆的特征
+    # 特征拼接，ego与vdi和vpi车辆的特征
+    # vehicle_features_q = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)], axis=-2)
+    vehicle_features_q = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)] + [feature_dict[f'vpi_{i+1}'] for i in range(vpi_num)], axis=-2)
+    vehicle_features_kv = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)] + [feature_dict[f'vpi_{i+1}'] for i in range(vpi_num)], axis=-2)
     # vehicle_features_q的shape: (16,11,200)
     # vehicle_features_kv的shape: (16,11,200)  
     
@@ -605,12 +605,12 @@ class PredictAttention(nj.Module):
     kv_x = jaxutils.cast_to_compute(vehicle_features_kv)  # 数据类型转换
     # attention
     # Dimensions: Batch*Length, entity, head, feature_per_head
-    # q = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(q_x).reshape([-1, 1 + npc_num, self._heads, self._units_per_head])
-    q = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(q_x).reshape([-1, 1 + npc_num + other_num, self._heads, self._units_per_head])
+    # q = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(q_x).reshape([-1, 1 + vdi_num, self._heads, self._units_per_head])
+    q = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(q_x).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
     # 获取名为'query'的Linear层，输入是q_x，输出维度为heads * units_per_head = 400(即units数)，然后将输出reshape成[-1, 11, 2, 200]的形状，赋值给q [-1,11,2,200]表示的就是[batch_size,实体数量,注意力头的数量、每个头的特征维度]
-    k = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(kv_x).reshape([-1, 1 + npc_num + other_num, self._heads, self._units_per_head])
+    k = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(kv_x).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
     # 获取名为'key'的Linear层，输入是kv_x，输出维度为heads * units_per_head = 400，然后将输出reshape成[-1, 11, 2, 200]的形状，赋值给k
-    v = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(kv_x).reshape([-1, 1 + npc_num + other_num, self._heads, self._units_per_head])
+    v = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(kv_x).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
     # 获取名为'value'的Linear层，输入是kv_x，输出维度为heads * units_per_head = 400，然后将输出reshape成[-1, 11, 2, 200]的形状，赋值给v
     # q,k,v的shape均为(16,11,2,200)
 
@@ -627,18 +627,18 @@ class PredictAttention(nj.Module):
     # 5.掩码处理
     # mask Dimensions: Batch*Length, head, 1, entity
     ego_mask = jnp.ones(list(q.shape[:1]) + [1,1])    # 创建一个全为1的张量，形状为[batch_size,1,1]，作为ego的掩码。q.shape是一个包含q张量各个维度大小的元组(16,2,11,200) q.shape[:-1]表示从元组中获取第一个元素，结果是一个包含第一个元素的元组(16,) list(q.shape[:1])：[16]
-    npc_mask = npc_mask.reshape(-1, 1, npc_num)       # 将npc_mask的形状reshape成[-1,1,npc_num]，-1表示自动计算该维度的大小，1表示在该维度上插入一个新维度，假设 npc_mask 的形状为 (32, 10)，则新的npc_mask的维度是(32, 1, npc_num)
-    other_mask = other_mask.reshape(-1, 1, other_num) # 同上
-    mask = jnp.concatenate([ego_mask, npc_mask, other_mask], axis=-1).reshape([-1, 1, 1, 1 + npc_num + other_num])
-    # 将 ego_mask、npc_mask 和 other_mask 在最后一个维度（axis=-1）上进行拼接。
+    vdi_mask = vdi_mask.reshape(-1, 1, vdi_num)       # 将vdi_mask的形状reshape成[-1,1,vdi_num]，-1表示自动计算该维度的大小，1表示在该维度上插入一个新维度，假设 vdi_mask 的形状为 (32, 10)，则新的vdi_mask的维度是(32, 1, vdi_num)
+    vpi_mask = vpi_mask.reshape(-1, 1, vpi_num) # 同上
+    mask = jnp.concatenate([ego_mask, vdi_mask, vpi_mask], axis=-1).reshape([-1, 1, 1, 1 + vdi_num + vpi_num])
+    # 将 ego_mask、vdi_mask 和 vpi_mask 在最后一个维度（axis=-1）上进行拼接。
     # 然后重塑形状为[-1,1,1,11]
     # 注意reshape(-1，1，1)和reshape([-1,1,1])的区别
     mask = jnp.repeat(mask, self._heads, axis=1)
     
     # 多头注意力值计算
-    # TODO: the attention of ego and npc can be get through 'different attention layers', 
-    # since they do different tasks in latter parts(npc for future prediction only and ego for actor/critic/reward/count)
-    # we use different mlp head to get a different attention result for ego and npc for now
+    # TODO: the attention of ego and vdi can be get through 'different attention layers', 
+    # since they do different tasks in latter parts(vdi for future prediction only and ego for actor/critic/reward/count)
+    # we use different mlp head to get a different attention result for ego and vdi for now
     self_attention_out, self_attention_mat = multi_head_attention(q, k, v, mask, drop_out=False)
     # Dimensions(back to): Batch*Length, entity, head, feature_per_head
     self_attention_out = self_attention_out.transpose(0,2,1,3)
@@ -647,8 +647,8 @@ class PredictAttention(nj.Module):
     # 输出处理
     self_attention_out_dict = {}
     self_attention_mat_dict = {}
-    # for i in range(npc_num + 1): # ego and npc
-    for i in range(npc_num + other_num + 1): # ego and npc
+    # for i in range(vdi_num + 1): # ego and vdi
+    for i in range(vdi_num + vpi_num + 1): # ego and vdi
       if i == 0:
         # TODO: ego maybe not useful
         # attention matrix for ego
@@ -658,22 +658,22 @@ class PredictAttention(nj.Module):
         x = x.reshape([x.shape[0], -1])
         x = self.get('ego_out_mlp', Linear, units=self._heads*self._units_per_head, **self._dense)(x)
         self_attention_out_dict['ego'] = x.reshape(list(vehicle_features_q.shape[:-2]) + [-1])
-      elif i < npc_num + 1:
-        # attention matrix for npc
-        self_attention_mat_dict[f'npc_{i}'] = self_attention_mat[..., i, :, :]
-        # attention output for npc
+      elif i < vdi_num + 1:
+        # attention matrix for vdi
+        self_attention_mat_dict[f'vdi_{i}'] = self_attention_mat[..., i, :, :]
+        # attention output for vdi
         x = self_attention_out[..., i, :, :]
         x = x.reshape([x.shape[0], -1])
-        x = self.get('npc_out_mlp', Linear, units=self._heads*self._units_per_head, **self._dense)(x)
-        self_attention_out_dict[f'npc_{i}'] = x.reshape(list(vehicle_features_q.shape[:-2]) + [-1])
+        x = self.get('vdi_out_mlp', Linear, units=self._heads*self._units_per_head, **self._dense)(x)
+        self_attention_out_dict[f'vdi_{i}'] = x.reshape(list(vehicle_features_q.shape[:-2]) + [-1])
       else:
-        # attention matrix for other
-        self_attention_mat_dict[f'other_{i-npc_num}'] = self_attention_mat[..., i, :, :]
-        # attention output for other
+        # attention matrix for vpi
+        self_attention_mat_dict[f'vpi_{i-vdi_num}'] = self_attention_mat[..., i, :, :]
+        # attention output for vpi
         x = self_attention_out[..., i, :, :]
         x = x.reshape([x.shape[0], -1])
-        x = self.get('other_out_mlp', Linear, units=self._heads*self._units_per_head, **self._dense)(x)
-        self_attention_out_dict[f'other_{i-npc_num}'] = x.reshape(list(vehicle_features_q.shape[:-2]) + [-1])
+        x = self.get('vpi_out_mlp', Linear, units=self._heads*self._units_per_head, **self._dense)(x)
+        self_attention_out_dict[f'vpi_{i-vdi_num}'] = x.reshape(list(vehicle_features_q.shape[:-2]) + [-1])
     return self_attention_out_dict, self_attention_out_dict, self_attention_mat_dict
   
 
@@ -702,29 +702,29 @@ class EgoAttention(nj.Module):
 
   def __call__(self, inputs_dict):
     # preprocess inputs
-    feature_dict = {key: self._inputs(value) for key, value in inputs_dict.items() if isinstance(value, dict) and key != 'attention_npc'}
-    # npc(and ego) feature contains its individual feature and its self-attention (prediction attention) to surrounding vehicles, as interactive features
+    feature_dict = {key: self._inputs(value) for key, value in inputs_dict.items() if isinstance(value, dict) and key != 'attention_vdi'}
+    # vdi(and ego) feature contains its individual feature and its self-attention (prediction attention) to surrounding vehicles, as interactive features
     # for key, value in feature_dict.items():
-    #   if key.startswith('npc_') or key.startswith('ego'):
-    #     # print(key, value.shape, inputs_dict['attention_npc'][key].shape)
-    #     feature_dict[key] = jnp.concatenate([value, inputs_dict['attention_npc'][key]], axis=-1)
+    #   if key.startswith('vdi_') or key.startswith('ego'):
+    #     # print(key, value.shape, inputs_dict['attention_vdi'][key].shape)
+    #     feature_dict[key] = jnp.concatenate([value, inputs_dict['attention_vdi'][key]], axis=-1)
         # print(feature_dict[key].shape)
     if self._symlog_inputs:
       feature_dict = {key: jaxutils.symlog(value) for key, value in feature_dict.items()}
-    # use attention mechanism to fuse ego and npc features together
-    npc_mask = inputs_dict['mask_npc']
-    npc_num = npc_mask.shape[-1]
-    # concat ego and npc features together in entity dimension
+    # use attention mechanism to fuse ego and vdi features together
+    vdi_mask = inputs_dict['mask_vdi']
+    vdi_num = vdi_mask.shape[-1]
+    # concat ego and vdi features together in entity dimension
     feature_dict = {key: jnp.expand_dims(value, axis=-2) for key, value in feature_dict.items()}
     ego_features = feature_dict['ego']
     ego_features = jaxutils.cast_to_compute(ego_features)
-    vehicle_features = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'npc_{i+1}'] for i in range(npc_num)], axis=-2)
+    vehicle_features = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)], axis=-2)
     vehicle_features = jaxutils.cast_to_compute(vehicle_features)
     # attention
     # Dimensions: Batch*Length, entity, head, feature_per_head
     q_ego = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(ego_features).reshape([-1, 1, self._heads, self._units_per_head])
-    k_all = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + npc_num, self._heads, self._units_per_head])
-    v_all = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + npc_num, self._heads, self._units_per_head])
+    k_all = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + vdi_num, self._heads, self._units_per_head])
+    v_all = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + vdi_num, self._heads, self._units_per_head])
     # Dimensions: Batch*Length, head, entity, feature_per_head
     q_ego = q_ego.transpose(0,2,1,3)
     k_all = k_all.transpose(0,2,1,3)
@@ -734,13 +734,13 @@ class EgoAttention(nj.Module):
     # print('v shape:', v.shape)
     # mask Dimensions: Batch*Length, head, 1, entity
     ego_mask = jnp.ones(list(q_ego.shape[:1]) + [1,1]) # Batch*Length, 1, 1
-    npc_mask = npc_mask.reshape(-1, 1, npc_num)
-    mask = jnp.concatenate([ego_mask, npc_mask], axis=-1).reshape([-1, 1, 1, npc_num + 1])
+    vdi_mask = vdi_mask.reshape(-1, 1, vdi_num)
+    mask = jnp.concatenate([ego_mask, vdi_mask], axis=-1).reshape([-1, 1, 1, vdi_num + 1])
     mask = jnp.repeat(mask, self._heads, axis=1)
     # print('mask shape', mask.shape)
-    # TODO: the attention of ego and npc can be get through 'different attention layers', 
-    # since they do different tasks in latter parts(npc for future prediction and ego for actor/critic/reward/count)
-    # yet we use different mlp head to get a different attention result for ego and npc for now
+    # TODO: the attention of ego and vdi can be get through 'different attention layers', 
+    # since they do different tasks in latter parts(vdi for future prediction and ego for actor/critic/reward/count)
+    # yet we use different mlp head to get a different attention result for ego and vdi for now
     ego_attention_out, ego_attention_mat = multi_head_attention(q_ego, k_all, v_all, mask, drop_out=False)
     # Dimensions(back to): Batch*Length, entity, head, feature_per_head
     ego_attention_out = ego_attention_out.transpose(0,2,1,3)
@@ -801,7 +801,7 @@ class PredictionDecoder(nj.Module):
     if self.mlp_shapes:
       # vehicle future trajectory prediction
       self._ego_mlp = MLP(self.mlp_shapes['ego_prediction'], mlp_layers, mlp_units, **mlp_kw, name='ego_mlp')
-      self._npc_mlp = MLP(self.mlp_shapes['npc_1_prediction'], mlp_layers, mlp_units, **mlp_kw, name='npc_mlp')
+      self._vdi_mlp = MLP(self.mlp_shapes['vdi_1_prediction'], mlp_layers, mlp_units, **mlp_kw, name='vdi_mlp')
 
   def __call__(self, featrue_dict, drop_loss_indices=None):
     dists_dict = {}
@@ -826,8 +826,8 @@ class PredictionDecoder(nj.Module):
         x = self._inputs(featrue_dict[key.replace('_prediction', '')]) # consider key may contains 'prediction' according to the training target
         if key.startswith('ego'):
           dist = self._ego_mlp(x)
-        elif key.startswith('npc_'):
-          dist = self._npc_mlp(x)
+        elif key.startswith('vdi_'):
+          dist = self._vdi_mlp(x)
         dists_dict.update({key: dist})
     return dists_dict
 
@@ -869,20 +869,20 @@ class PIWMMLP(nj.Module):
     self._dist = {k: v for k, v in kw.items() if k in distkeys}
 
   # 多层感知机的前向传播
-  def __call__(self, feature_dict, attention, concat_feat=False): # feature_dict: {'ego': ego_features, 'npc_1': npc_1_features, ...}, attention_dict: {'ego': ego_attention_to_other, 'npc_1': npc_1_attention_to_other, ...}
+  def __call__(self, feature_dict, attention, concat_feat=False): # feature_dict: {'ego': ego_features, 'vdi_1': vdi_1_features, ...}, attention_dict: {'ego': ego_attention_to_vpi, 'vdi_1': vdi_1_attention_to_vpi, ...}
     # 1.数据预处理
     # preprocess feature inputs, only consider vehicle features
-    feature_dict = {key: self._inputs(value) for key, value in feature_dict.items() if key.startswith(('ego', 'npc_'))}
-    # 筛选feature_dict中以ego和npc_开头的键值对，将其值转换为张量，返回处理后的新字典。
+    feature_dict = {key: self._inputs(value) for key, value in feature_dict.items() if key.startswith(('ego', 'vdi_'))}
+    # 筛选feature_dict中以ego和vdi_开头的键值对，将其值转换为张量，返回处理后的新字典。
     print(feature_dict)
     if self._symlog_inputs: # 判断是否进行对数变换
-      feature_dict = {key: jaxutils.symlog(value) for key, value in feature_dict.items() if key.startswith(('ego', 'npc_'))}
+      feature_dict = {key: jaxutils.symlog(value) for key, value in feature_dict.items() if key.startswith(('ego', 'vdi_'))}
 
     # 2.特征连接
-    # TODO: concat npc features or ego attention should be a hyparameter, yet concat should in distance order
-    if concat_feat: # concat ego and npc features together  # 将ego和npc特征连接在一起
+    # TODO: concat vdi features or ego attention should be a hyparameter, yet concat should in distance order
+    if concat_feat: # concat ego and vdi features together  # 将ego和vdi特征连接在一起
       feat = jnp.concatenate(list(feature_dict.values()), axis=-1)
-    else: # use ego feature and its attention               # 不将ego和npc特征连接在一起
+    else: # use ego feature and its attention               # 不将ego和vdi特征连接在一起
       if isinstance(attention, dict):
         attention = attention['ego'] # 提取attention列表中'ego'的注意力值(并不是一个值)
       feat = jnp.concatenate([feature_dict['ego'], attention], axis=-1) # 拼接ego特征和ego的注意力值，沿最后一个维度

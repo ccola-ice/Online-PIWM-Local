@@ -117,7 +117,7 @@ class ClientInterface(object):
 
         return False
 
-    def _observation_to_ego_dict_array(self, observation, ego_id_list, npc_id_dict, other_id_dict):
+    def _observation_to_ego_dict_array(self, observation, ego_id_list, vdi_id_dict, vpi_id_dict):
         if self.args.state_frame == 'ego':
             needed_state = ['vector_past_vehicle_state_ego_frame'] # ['vector_map']
         elif self.args.state_frame == 'global':
@@ -129,36 +129,36 @@ class ClientInterface(object):
             ego_state_dict[ego_id] = dict()
         # for every ego vehicle(since there may be multiple ego vehicles)
         for ego_id in ego_id_list:
-            # npc_1 ~ npc_n, and mask_npc indicates their existence
-            npc_index_set = set('npc_' + str(i) for i in range(1, self.args.npc_num + 1))
-            mask_npc = np.zeros(len(npc_index_set), dtype=np.int32)
-            is_new_npc = np.zeros(len(npc_index_set), dtype=np.int32)
-            id_npc = np.zeros(len(npc_index_set), dtype=np.int32)
-            # other_1 ~ other_n, also has mask
-            other_index_set = set('other_' + str(i) for i in range(1, self.args.other_num + 1))
-            mask_other = np.zeros(len(other_index_set), dtype=np.int32)
-            is_new_other = np.zeros(len(other_index_set), dtype=np.int32)
-            id_other = np.zeros(len(other_index_set), dtype=np.int32)
-            
+            # vdi_1 ~ vdi_n, and mask_vdi indicates their existence
+            vdi_index_set = set('vdi_' + str(i) for i in range(1, self.args.vdi_num + 1))
+            mask_vdi = np.zeros(len(vdi_index_set), dtype=np.int32)
+            is_new_vdi = np.zeros(len(vdi_index_set), dtype=np.int32)
+            id_vdi = np.zeros(len(vdi_index_set), dtype=np.int32)
+            # vpi_1 ~ vpi_n, also has mask
+            vpi_index_set = set('vpi_' + str(i) for i in range(1, self.args.vpi_num + 1))
+            mask_vpi = np.zeros(len(vpi_index_set), dtype=np.int32)
+            is_new_vpi = np.zeros(len(vpi_index_set), dtype=np.int32)
+            id_vpi = np.zeros(len(vpi_index_set), dtype=np.int32)
+
             # current surrounding vehicles' id, from closet to farest (distance), which is devided into 2 parts
             surrounding_vehicles_id = observation['surrounding_vehicles_id'][ego_id]
             # print(surrounding_vehicles_id)
-            npc_id_distance = list(surrounding_vehicles_id)[:self.args.npc_num]
-            other_id_distance = list(surrounding_vehicles_id)[self.args.npc_num:self.args.npc_num + self.args.other_num]
-            # print(npc_id_distance, other_id_distance)
+            vdi_id_distance = list(surrounding_vehicles_id)[:self.args.vdi_num]
+            vpi_id_distance = list(surrounding_vehicles_id)[self.args.vdi_num:self.args.vdi_num + self.args.vpi_num]
+            # print(vdi_id_distance, vpi_id_distance)
                 
             # get state for every ego vehicle
             for state_name in needed_state:
                 state = observation[state_name]
                 # vehicle state
                 if state_name.startswith('vector_past_vehicle_state'):
-                    # 1. remove or transfer(actually is also remove) vehicles' id from npc_id_dict(id: npc_*) and other_id_dict(id: other_*)
-                    remove_npc_id_set = set(npc_id_dict.keys()) - set(npc_id_distance)
-                    for remove_npc_id in remove_npc_id_set:
-                        npc_id_dict.pop(remove_npc_id)
-                    remove_other_id_set = set(other_id_dict.keys()) - set(other_id_distance)
-                    for remove_other_id in remove_other_id_set:
-                        other_id_dict.pop(remove_other_id)
+                    # 1. remove or transfer(actually is also remove) vehicles' id from vdi_id_dict(id: vdi_*) and vpi_id_dict(id: vpi_*)
+                    remove_vdi_id_set = set(vdi_id_dict.keys()) - set(vdi_id_distance)
+                    for remove_vdi_id in remove_vdi_id_set:
+                        vdi_id_dict.pop(remove_vdi_id)
+                    remove_vpi_id_set = set(vpi_id_dict.keys()) - set(vpi_id_distance)
+                    for remove_vpi_id in remove_vpi_id_set:
+                        vpi_id_dict.pop(remove_vpi_id)
 
                     # 2. update ego_state_dict
                     for vehicle_id, traj_state in state.items():
@@ -166,92 +166,92 @@ class ClientInterface(object):
                         # ego state
                         if vehicle_id == ego_id: 
                             ego_state_dict[ego_id]['ego'] = vector_state
-                        # npc and other vehicle state
+                        # vdi and vpi vehicle state
                         else: 
                             # if this vehicle has been in the state dict in last step and in ego's dectect range
-                            if vehicle_id in npc_id_dict.keys():
-                                npc_index = npc_id_dict[vehicle_id]
-                                ego_state_dict[ego_id][npc_index] = vector_state
-                            elif vehicle_id in other_id_dict.keys():
-                                other_index = other_id_dict[vehicle_id]
-                                ego_state_dict[ego_id][other_index] = vector_state
+                            if vehicle_id in vdi_id_dict.keys():
+                                vdi_index = vdi_id_dict[vehicle_id]
+                                ego_state_dict[ego_id][vdi_index] = vector_state
+                            elif vehicle_id in vpi_id_dict.keys():
+                                vpi_index = vpi_id_dict[vehicle_id]
+                                ego_state_dict[ego_id][vpi_index] = vector_state
                             # if this vehicle is new for state dict, then put it in the state dict if there is a room
                             else:
-                                if len(npc_id_dict.keys()) < self.args.npc_num and vehicle_id in npc_id_distance:
-                                    feasible_npc_index = random.choice(list(npc_index_set - set(npc_id_dict.values())))
-                                    is_new_npc[int(feasible_npc_index[-1]) - 1] = 1
-                                    npc_id_dict[vehicle_id] = feasible_npc_index
-                                    ego_state_dict[ego_id][feasible_npc_index] = vector_state
-                                elif len(other_id_dict.keys()) < self.args.other_num and vehicle_id in other_id_distance:
-                                    feasible_other_index = random.choice(list(other_index_set - set(other_id_dict.values())))
-                                    is_new_other[int(feasible_other_index[-1]) - 1] = 1
-                                    other_id_dict[vehicle_id] = feasible_other_index
-                                    ego_state_dict[ego_id][feasible_other_index] = vector_state
+                                if len(vdi_id_dict.keys()) < self.args.vdi_num and vehicle_id in vdi_id_distance:
+                                    feasible_vdi_index = random.choice(list(vdi_index_set - set(vdi_id_dict.values())))
+                                    is_new_vdi[int(feasible_vdi_index[-1]) - 1] = 1
+                                    vdi_id_dict[vehicle_id] = feasible_vdi_index
+                                    ego_state_dict[ego_id][feasible_vdi_index] = vector_state
+                                elif len(vpi_id_dict.keys()) < self.args.vpi_num and vehicle_id in vpi_id_distance:
+                                    feasible_vpi_index = random.choice(list(vpi_index_set - set(vpi_id_dict.values())))
+                                    is_new_vpi[int(feasible_vpi_index[-1]) - 1] = 1
+                                    vpi_id_dict[vehicle_id] = feasible_vpi_index
+                                    ego_state_dict[ego_id][feasible_vpi_index] = vector_state
 
-                    # 3. update npc_mask and other_mask
-                    for vehicle_id, npc_index in npc_id_dict.items():
-                        mask_npc[int(npc_index[-1]) - 1] = 1
-                        id_npc[int(npc_index[-1]) - 1] = vehicle_id
-                    for vehicle_id, other_index in other_id_dict.items():
-                        mask_other[int(other_index[-1]) - 1] = 1
-                        id_other[int(other_index[-1]) - 1] = vehicle_id
+                    # 3. update vdi_mask and vpi_mask
+                    for vehicle_id, vdi_index in vdi_id_dict.items():
+                        mask_vdi[int(vdi_index[-1]) - 1] = 1
+                        id_vdi[int(vdi_index[-1]) - 1] = vehicle_id
+                    for vehicle_id, vpi_index in vpi_id_dict.items():
+                        mask_vpi[int(vpi_index[-1]) - 1] = 1
+                        id_vpi[int(vpi_index[-1]) - 1] = vehicle_id
 
                     # 4. complete state dict if there are not enough vehicles around
-                    while len(ego_state_dict[ego_id].keys()) < self.args.npc_num + self.args.other_num + 1:
-                        current_npc_index_set = set([key for key in ego_state_dict[ego_id].keys() if 'npc' in key])
-                        current_other_index_set = set([key for key in ego_state_dict[ego_id].keys() if 'other' in key])
-                        if len(current_npc_index_set) < self.args.npc_num:
-                            padding_npc_index = list(npc_index_set - current_npc_index_set)[0]
-                            ego_state_dict[ego_id][padding_npc_index] = np.zeros([19, 5])
-                        elif len(current_other_index_set) < self.args.other_num:
-                            padding_other_index = list(other_index_set - current_other_index_set)[0]
-                            ego_state_dict[ego_id][padding_other_index] = np.zeros([19, 5])
+                    while len(ego_state_dict[ego_id].keys()) < self.args.vdi_num + self.args.vpi_num + 1:
+                        current_vdi_index_set = set([key for key in ego_state_dict[ego_id].keys() if 'vdi' in key])
+                        current_vpi_index_set = set([key for key in ego_state_dict[ego_id].keys() if 'vpi' in key])
+                        if len(current_vdi_index_set) < self.args.vdi_num:
+                            padding_vdi_index = list(vdi_index_set - current_vdi_index_set)[0]
+                            ego_state_dict[ego_id][padding_vdi_index] = np.zeros([19, 5])
+                        elif len(current_vpi_index_set) < self.args.vpi_num:
+                            padding_vpi_index = list(vpi_index_set - current_vpi_index_set)[0]
+                            ego_state_dict[ego_id][padding_vpi_index] = np.zeros([19, 5])
 
-                    # 5. plus mask and other npc padding related state in state dict
-                    ego_state_dict[ego_id]['mask_npc'] = mask_npc
-                    ego_state_dict[ego_id]['id_npc'] = id_npc
-                    ego_state_dict[ego_id]['mask_other'] = mask_other
-                    ego_state_dict[ego_id]['id_other'] = id_other
+                    # 5. plus mask and vpi vdi padding related state in state dict
+                    ego_state_dict[ego_id]['mask_vdi'] = mask_vdi
+                    ego_state_dict[ego_id]['id_vdi'] = id_vdi
+                    ego_state_dict[ego_id]['mask_vpi'] = mask_vpi
+                    ego_state_dict[ego_id]['id_vpi'] = id_vpi
 
-                    ego_state_dict[ego_id]['should_init_npc'] = []
-                    for i in range(len(mask_npc)):
-                        if not mask_npc[i] or is_new_npc[i]:
-                            ego_state_dict[ego_id]['should_init_npc'].append(1)
+                    ego_state_dict[ego_id]['should_init_vdi'] = []
+                    for i in range(len(mask_vdi)):
+                        if not mask_vdi[i] or is_new_vdi[i]:
+                            ego_state_dict[ego_id]['should_init_vdi'].append(1)
                         else:
-                            ego_state_dict[ego_id]['should_init_npc'].append(0)
+                            ego_state_dict[ego_id]['should_init_vdi'].append(0)
 
-                    ego_state_dict[ego_id]['should_init_other'] = []
-                    for i in range(len(mask_other)):
-                        if not mask_other[i] or is_new_other[i]:
-                            ego_state_dict[ego_id]['should_init_other'].append(1)
+                    ego_state_dict[ego_id]['should_init_vpi'] = []
+                    for i in range(len(mask_vpi)):
+                        if not mask_vpi[i] or is_new_vpi[i]:
+                            ego_state_dict[ego_id]['should_init_vpi'].append(1)
                         else:
-                            ego_state_dict[ego_id]['should_init_other'].append(0)
+                            ego_state_dict[ego_id]['should_init_vpi'].append(0)
 
-                    # 6. from closet to farest (distance) of npc/other vehicles index
-                    ego_state_dict[ego_id]['index_npc'] = []
-                    for vehicle_id in npc_id_distance:
-                        ego_state_dict[ego_id]['index_npc'].append(npc_id_dict[vehicle_id])
-                    ego_state_dict[ego_id]['index_other'] = []
-                    for vehicle_id in other_id_distance:
-                        ego_state_dict[ego_id]['index_other'].append(other_id_dict[vehicle_id])
+                    # 6. from closet to farest (distance) of vdi/vpi vehicles index
+                    ego_state_dict[ego_id]['index_vdi'] = []
+                    for vehicle_id in vdi_id_distance:
+                        ego_state_dict[ego_id]['index_vdi'].append(vdi_id_dict[vehicle_id])
+                    ego_state_dict[ego_id]['index_vpi'] = []
+                    for vehicle_id in vpi_id_distance:
+                        ego_state_dict[ego_id]['index_vpi'].append(vpi_id_dict[vehicle_id])
                     
-                    # print('mask_npc:', mask_npc)
-                    # print('id_npc:', id_npc)
-                    # print('is_new_npc:', is_new_npc)
-                    # print('should_init_npc:', ego_state_dict[ego_id]['should_init_npc'])
-                    # print(npc_id_distance, npc_id_dict, ego_state_dict[ego_id]['index_npc'])
+                    # print('mask_vdi:', mask_vdi)
+                    # print('id_vdi:', id_vdi)
+                    # print('is_new_vdi:', is_new_vdi)
+                    # print('should_init_vdi:', ego_state_dict[ego_id]['should_init_vdi'])
+                    # print(vdi_id_distance, vdi_id_dict, ego_state_dict[ego_id]['index_vdi'])
 
-                    # print('mask_other:', mask_other)
-                    # print('id_other:', id_other)
-                    # print('is_new_other:', is_new_other)
-                    # print('should_init_other:', ego_state_dict[ego_id]['should_init_other'])
-                    # print(other_id_distance, other_id_dict, ego_state_dict[ego_id]['index_other'])
+                    # print('mask_vpi:', mask_vpi)
+                    # print('id_vpi:', id_vpi)
+                    # print('is_new_vpi:', is_new_vpi)
+                    # print('should_init_vpi:', ego_state_dict[ego_id]['should_init_vpi'])
+                    # print(vpi_id_distance, vpi_id_dict, ego_state_dict[ego_id]['index_vpi'])
 
-                    # for i in range(len(npc_id_distance)):
-                    #     if not npc_id_dict[npc_id_distance[i]] == ego_state_dict[ego_id]['index_npc'][i]:
+                    # for i in range(len(vdi_id_distance)):
+                    #     if not vdi_id_dict[vdi_id_distance[i]] == ego_state_dict[ego_id]['index_vdi'][i]:
                     #         print('oops')
-                    # for i in range(len(other_id_distance)):
-                    #     if not other_id_dict[other_id_distance[i]] == ego_state_dict[ego_id]['index_other'][i]:
+                    # for i in range(len(vpi_id_distance)):
+                    #     if not vpi_id_dict[vpi_id_distance[i]] == ego_state_dict[ego_id]['index_vpi'][i]:
                     #         print('ooooops')
                     # print('__________________________________________________')
 
@@ -261,15 +261,15 @@ class ClientInterface(object):
                     ego_state_dict[ego_id]['map'] = np.reshape(state, [-1, 4])
 
 
-            # print('mask:', mask_npc)
-            # print('id:',id_npc)
-            # print('id-order dict:', npc_id_dict)
+            # print('mask:', mask_vdi)
+            # print('id:',id_vdi)
+            # print('id-order dict:', vdi_id_dict)
 
             # print('id list close to far: ', observation['interaction_vehicles_id'][ego_id])
-            # print('order list close to far: ', ego_state_dict[ego_id]['order_npc'])
+            # print('order list close to far: ', ego_state_dict[ego_id]['order_vdi'])
             # print(ego_state_dict[ego_id].keys())
                 
-        return ego_state_dict, npc_id_dict, other_id_dict
+        return ego_state_dict, vdi_id_dict, vpi_id_dict
     
     def reset(self):
         # reset flags
@@ -292,10 +292,10 @@ class ClientInterface(object):
         else:
             self.scen_init_flag = False
         
-        # record npc id and index
-        self._npc_id_dict = {}
-        self._other_id_dict = {}
-        state_dict_array, self._npc_id_dict, self._other_id_dict = self._observation_to_ego_dict_array(observation, self.ego_id_list, self._npc_id_dict, self._other_id_dict)
+        # record vdi id and index
+        self._vdi_id_dict = {}
+        self._vpi_id_dict = {}
+        state_dict_array, self._vdi_id_dict, self._vpi_id_dict = self._observation_to_ego_dict_array(observation, self.ego_id_list, self._vdi_id_dict, self._vpi_id_dict)
 
         # record prediction data
         self.ep_prediction_data = {}
@@ -335,7 +335,7 @@ class ClientInterface(object):
         # record prediction data for ade analyse
         if prediction is not None:
             for ego_id in self.ego_id_list:
-                # print(self._npc_id_dict)
+                # print(self._vdi_id_dict)
                 # pridciton in global frame
                 prediction_global_index = aux_info_dict[ego_id].pop('prediction_global')
                 time = list(prediction_global_index.keys())[0]
@@ -346,13 +346,13 @@ class ClientInterface(object):
                 #     print(0)
                 #     print(prediction_global_index[time][0])
                 #     print(prediction)
-                for npc_id in self._npc_id_dict:
-                    npc_index = int(self._npc_id_dict[npc_id][-1])
-                    prediction_global_id.update({npc_id: prediction_global_index[time][npc_index]})
-                    # if prediction_global_index[time][npc_index] is None:
+                for vdi_id in self._vdi_id_dict:
+                    vdi_index = int(self._vdi_id_dict[vdi_id][-1])
+                    prediction_global_id.update({vdi_id: prediction_global_index[time][vdi_index]})
+                    # if prediction_global_index[time][vdi_index] is None:
                     #     print('find it')
-                    #     print(npc_index)
-                    #     print(prediction_global_index[time][npc_index])
+                    #     print(vdi_index)
+                    #     print(prediction_global_index[time][vdi_index])
                     #     print(prediction)
                 self.ep_prediction_data.update({time: prediction_global_id})
                 # ego ground truth location
@@ -390,8 +390,8 @@ class ClientInterface(object):
                     pickle.dump(self.run_data_dict, f)
                     print('file saved')
                 
-        # record npc id
-        state_dict_array, self._npc_id_dict, self._other_id_dict = self._observation_to_ego_dict_array(observation, self.ego_id_list, self._npc_id_dict, self._other_id_dict)
+        # record vdi id
+        state_dict_array, self._vdi_id_dict, self._vpi_id_dict = self._observation_to_ego_dict_array(observation, self.ego_id_list, self._vdi_id_dict, self._vpi_id_dict)
         
         return state_dict_array, reward_dict, done_dict, aux_info_dict
 

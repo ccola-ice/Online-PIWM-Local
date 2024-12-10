@@ -14,17 +14,17 @@ from . import jaxutils
 from . import ninjax as nj
 cast = jaxutils.cast_to_compute
 
-''' Only contains some modules that are used in branch abalation only, and other modules for abalation study are in nets_PIM.py '''
+''' Only contains some modules that are used in branch abalation only, and vpi modules for abalation study are in nets_PIM.py '''
 
 class OneBranchRSSM(nj.Module):
   def __init__(
       self, shapes, deter=1024, stoch=32, classes=32, unroll=False, initial='learned',
       unimix=0.01, action_clip=1.0, **kw):
     
-    # multi heads of rssm(ego, npc_1...npc_n, other_1....other_n)
+    # multi heads of rssm(ego, vdi_1...vdi_n, vpi_1....vpi_n)
     # excluded = ('reward', 'is_first', 'is_last', 'is_terminal')
     # self._keys = [k for k in shapes.keys() if 'prediction' not in k and k not in excluded]
-    rssm_included = [k for k in shapes.keys() if k.startswith(('ego', 'npc', 'other')) and 'prediction' not in k]
+    rssm_included = [k for k in shapes.keys() if k.startswith(('ego', 'vdi', 'vpi')) and 'prediction' not in k]
     self._keys = [k for k in shapes.keys() if k in rssm_included]
     print('RSSM keys:', self._keys)
 
@@ -46,15 +46,15 @@ class OneBranchRSSM(nj.Module):
       state_dict.update({key: state})
     return state_dict
   
-  def observe(self, embed, action, is_first, should_init_npc, should_init_other, state_dict=None):
-    # ego state and npc state should be divided, also, npc state should be divided into each npc
+  def observe(self, embed, action, is_first, should_init_vdi, should_init_vpi, state_dict=None):
+    # ego state and vdi state should be divided, also, vdi state should be divided into each vdi
     if state_dict is None: # size is batch_size (16 by default)
       state_dict = self.initial(batch_size=action.shape[0])
 
     # swap: change x shape from (16, 64, xx) to (64, 16, xx) (or from (64, 16, xx) to (16, 64, xx))
     # TODO: notice for obs_step, the start is state_dict, not tuple(state_dict, state_dict), figure out why it works like this
     step = lambda prev, inputs: self.obs_step(prev[0], *inputs)
-    inputs = self._swap(action), self._swap(embed), self._swap(is_first), self._swap(should_init_npc), self._swap(should_init_other)
+    inputs = self._swap(action), self._swap(embed), self._swap(is_first), self._swap(should_init_vdi), self._swap(should_init_vpi)
     start = state_dict, state_dict
     post_dict, prior_dict = jaxutils.scan(step, inputs, start, self._unroll)
 
@@ -74,7 +74,7 @@ class OneBranchRSSM(nj.Module):
     prior_dict = {k: self._swap(v) for k, v in prior_dict.items()}
     return prior_dict
 
-  def obs_step(self, prev_state, prev_action, embed_dict, is_first, should_init_npc, should_init_other):
+  def obs_step(self, prev_state, prev_action, embed_dict, is_first, should_init_vdi, should_init_vpi):
     # change data type
     is_first = cast(is_first)
     prev_action = cast(prev_action)
@@ -92,19 +92,19 @@ class OneBranchRSSM(nj.Module):
         lambda x, y: x + self._mask(y, is_first), prev_state, self.initial(len(is_first)))
     
     # TODO: initial muilple times when is_first is True, waste of calcualtion
-    # initialize latent state for zero-padded(masked) npcs/others or new npcs/others
-    should_init_npc, should_init_other = cast(should_init_npc), cast(should_init_other)
+    # initialize latent state for zero-padded(masked) vdis/vpis or new vdis/vpis
+    should_init_vdi, should_init_vpi = cast(should_init_vdi), cast(should_init_vpi)
     for key in prev_state.keys():
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        should_init =  should_init_npc[:, npc_index - 1]
-        # for npcs who are new to the observation, set its state to 0 first
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        should_init =  should_init_vdi[:, vdi_index - 1]
+        # for vdis who are new to the observation, set its state to 0 first
         zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key])
         # and then initialize it using rssm initial function
         prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init)))
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        should_init =  should_init_other[:, other_index - 1]
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        should_init =  should_init_vpi[:, vpi_index - 1]
         zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key])
         prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init)))
     
@@ -124,7 +124,7 @@ class OneBranchRSSM(nj.Module):
         stoch = dist.sample(seed=nj.rng())
         # for post and prior dict, h(deter) is the same
         post = {'stoch': stoch, 'deter': prior['deter'], **stats}
-      elif key.startswith('npc_') or key.startswith('other_'):
+      elif key.startswith('vdi_') or key.startswith('vpi_'):
         x = jnp.concatenate([prior['deter'], embed_dict[key]], -1)
         x = self.get('vehicle_obs_out', Linear, **self._kw)(x)
         stats = self._stats('vehicle_obs_stats', x)
@@ -142,10 +142,10 @@ class OneBranchRSSM(nj.Module):
       prev_action *= sg(self._action_clip / jnp.maximum(
           self._action_clip, jnp.abs(prev_action)))
 
-    # different branch for ego, npc_1...npc_n, other_1...other_n state
+    # different branch for ego, vdi_1...vdi_n, vpi_1...vpi_n state
     prior_dict = {}
     for key in prev_state_dict.keys():
-      if key.startswith(('ego', 'npc_', 'other_')):
+      if key.startswith(('ego', 'vdi_', 'vpi_')):
         prev_stoch = prev_state_dict[key]['stoch'] # z(t-1)
         deter = prev_state_dict[key]['deter'] # h(t-1)
         # reshape discret stoch(z), make it flatten, e.g. batch x 32 x 32 -> batch x 1024
@@ -157,7 +157,7 @@ class OneBranchRSSM(nj.Module):
           shape = prev_action.shape[:-2] + (np.prod(prev_action.shape[-2:]),)
           prev_action = prev_action.reshape(shape)
 
-        # different branches for ego, npcs and others
+        # different branches for ego, vdis and vpis
         if key.startswith('ego'):
           # give (z,a)(t-1) and h(t-1) to GRU, get ^z(t) and h(t) and logits(t)
           x = jnp.concatenate([prev_stoch, prev_action], -1)
@@ -171,7 +171,7 @@ class OneBranchRSSM(nj.Module):
           stoch = dist.sample(seed=nj.rng())
           # prior
           prior = {'stoch': stoch, 'deter': deter, **stats}
-        elif key.startswith('npc_') or key.startswith('other_'):
+        elif key.startswith('vdi_') or key.startswith('vpi_'):
           x = jnp.concatenate([prev_stoch, prev_action], -1)
           x = self.get('vehicle_img_in', Linear, **self._kw)(x)
           x, deter = self._gru('vehicle_gru', x, deter)
@@ -205,7 +205,7 @@ class OneBranchRSSM(nj.Module):
         x = self.get('ego_img_out', Linear, **self._kw)(deter)
         stats = self._stats('ego_img_stats', x)
         dist = self.get_dist(stats)
-      elif key.startswith('npc_') or key.startswith('other_'):
+      elif key.startswith('vdi_') or key.startswith('vpi_'):
         x = self.get('vehicle_img_out', Linear, **self._kw)(deter)
         stats = self._stats('vehicle_img_stats', x)
         dist = self.get_dist(stats)
@@ -281,13 +281,13 @@ class OneBranchRSSM(nj.Module):
     else:
       return swap(input)
     
-  def dyn_loss(self, post_dict, prior_dict, mask_npc=1, mask_other=1, impl='kl', free=1.0):
+  def dyn_loss(self, post_dict, prior_dict, mask_vdi=1, mask_vpi=1, impl='kl', free=1.0):
     # get loss dims
     loss_dims = post_dict['ego']['deter'].shape[:2]
     loss_dict = {}
-    # sum up losses for npcs or others branch
-    npc_dyn_kl_loss = jnp.zeros(loss_dims)
-    other_dyn_kl_loss = jnp.zeros(loss_dims)
+    # sum up losses for vdis or vpis branch
+    vdi_dyn_kl_loss = jnp.zeros(loss_dims)
+    vpi_dyn_kl_loss = jnp.zeros(loss_dims)
     for key in post_dict.keys():
       # how to calculate dyn loss, impl is 'kl' by default
       if impl == 'kl':
@@ -299,31 +299,31 @@ class OneBranchRSSM(nj.Module):
       # kl free
       if free:
         loss = jnp.maximum(loss, free)
-      # npc sum up
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        mask = mask_npc[:, :, npc_index - 1]
-        npc_dyn_kl_loss += loss * mask
-        loss_dict.update({'npc_dyn_kl': npc_dyn_kl_loss})
-      # other sum up
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        mask = mask_other[:, :, other_index - 1]
-        other_dyn_kl_loss += loss * mask
-        loss_dict.update({'other_dyn_kl': other_dyn_kl_loss})
+      # vdi sum up
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        mask = mask_vdi[:, :, vdi_index - 1]
+        vdi_dyn_kl_loss += loss * mask
+        loss_dict.update({'vdi_dyn_kl': vdi_dyn_kl_loss})
+      # vpi sum up
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        mask = mask_vpi[:, :, vpi_index - 1]
+        vpi_dyn_kl_loss += loss * mask
+        loss_dict.update({'vpi_dyn_kl': vpi_dyn_kl_loss})
       # ego
       else:
         loss_dict.update({key + '_dyn_kl': loss})
     # print(loss_dict.keys())
     return loss_dict
 
-  def rep_loss(self, post_dict, prior_dict, mask_npc=1, mask_other=1, impl='kl', free=1.0):
+  def rep_loss(self, post_dict, prior_dict, mask_vdi=1, mask_vpi=1, impl='kl', free=1.0):
     # get loss dims
     loss_dims = post_dict['ego']['deter'].shape[:2]
     loss_dict = {}
-    # sum up losses for npcs or others branch
-    npc_rep_kl_loss = jnp.zeros(loss_dims)
-    other_rep_kl_loss = jnp.zeros(loss_dims)
+    # sum up losses for vdis or vpis branch
+    vdi_rep_kl_loss = jnp.zeros(loss_dims)
+    vpi_rep_kl_loss = jnp.zeros(loss_dims)
     for key in post_dict.keys():
       # how to calculate rep loss, impl is 'kl' by default
       if impl == 'kl':
@@ -340,18 +340,18 @@ class OneBranchRSSM(nj.Module):
       # kl free
       if free:
         loss = jnp.maximum(loss, free)
-      # npc sum up
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        mask = mask_npc[:, :, npc_index - 1]
-        npc_rep_kl_loss += loss * mask
-        loss_dict.update({'npc_rep_kl': npc_rep_kl_loss})
-      # other sum up
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        mask = mask_other[:, :, other_index - 1]
-        other_rep_kl_loss += loss * mask
-        loss_dict.update({'other_rep_kl': other_rep_kl_loss})
+      # vdi sum up
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        mask = mask_vdi[:, :, vdi_index - 1]
+        vdi_rep_kl_loss += loss * mask
+        loss_dict.update({'vdi_rep_kl': vdi_rep_kl_loss})
+      # vpi sum up
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        mask = mask_vpi[:, :, vpi_index - 1]
+        vpi_rep_kl_loss += loss * mask
+        loss_dict.update({'vpi_rep_kl': vpi_rep_kl_loss})
       # ego
       else:
         loss_dict.update({key + '_rep_kl': loss})
@@ -365,10 +365,10 @@ class TwoBranchRSSM(nj.Module):
       self, shapes, deter=1024, stoch=32, classes=32, unroll=False, initial='learned',
       unimix=0.01, action_clip=1.0, **kw):
     
-    # multi heads of rssm(ego, npc_1...npc_n, other_1....other_n)
+    # multi heads of rssm(ego, vdi_1...vdi_n, vpi_1....vpi_n)
     # excluded = ('reward', 'is_first', 'is_last', 'is_terminal')
     # self._keys = [k for k in shapes.keys() if 'prediction' not in k and k not in excluded]
-    rssm_included = [k for k in shapes.keys() if k.startswith(('ego', 'npc', 'other')) and 'prediction' not in k]
+    rssm_included = [k for k in shapes.keys() if k.startswith(('ego', 'vdi', 'vpi')) and 'prediction' not in k]
     self._keys = [k for k in shapes.keys() if k in rssm_included]
     print('RSSM keys:', self._keys)
 
@@ -390,15 +390,15 @@ class TwoBranchRSSM(nj.Module):
       state_dict.update({key: state})
     return state_dict
   
-  def observe(self, embed, action, is_first, should_init_npc, should_init_other, state_dict=None):
-    # ego state and npc state should be divided, also, npc state should be divided into each npc
+  def observe(self, embed, action, is_first, should_init_vdi, should_init_vpi, state_dict=None):
+    # ego state and vdi state should be divided, also, vdi state should be divided into each vdi
     if state_dict is None: # size is batch_size (16 by default)
       state_dict = self.initial(batch_size=action.shape[0])
 
     # swap: change x shape from (16, 64, xx) to (64, 16, xx) (or from (64, 16, xx) to (16, 64, xx))
     # TODO: notice for obs_step, the start is state_dict, not tuple(state_dict, state_dict), figure out why it works like this
     step = lambda prev, inputs: self.obs_step(prev[0], *inputs)
-    inputs = self._swap(action), self._swap(embed), self._swap(is_first), self._swap(should_init_npc), self._swap(should_init_other)
+    inputs = self._swap(action), self._swap(embed), self._swap(is_first), self._swap(should_init_vdi), self._swap(should_init_vpi)
     start = state_dict, state_dict
     post_dict, prior_dict = jaxutils.scan(step, inputs, start, self._unroll)
 
@@ -418,7 +418,7 @@ class TwoBranchRSSM(nj.Module):
     prior_dict = {k: self._swap(v) for k, v in prior_dict.items()}
     return prior_dict
 
-  def obs_step(self, prev_state, prev_action, embed_dict, is_first, should_init_npc, should_init_other):
+  def obs_step(self, prev_state, prev_action, embed_dict, is_first, should_init_vdi, should_init_vpi):
     # change data type
     is_first = cast(is_first)
     prev_action = cast(prev_action)
@@ -436,19 +436,19 @@ class TwoBranchRSSM(nj.Module):
         lambda x, y: x + self._mask(y, is_first), prev_state, self.initial(len(is_first)))
     
     # TODO: initial muilple times when is_first is True, waste of calcualtion
-    # initialize latent state for zero-padded(masked) npcs/others or new npcs/others
-    should_init_npc, should_init_other = cast(should_init_npc), cast(should_init_other)
+    # initialize latent state for zero-padded(masked) vdis/vpis or new vdis/vpis
+    should_init_vdi, should_init_vpi = cast(should_init_vdi), cast(should_init_vpi)
     for key in prev_state.keys():
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        should_init =  should_init_npc[:, npc_index - 1]
-        # for npcs who are new to the observation, set its state to 0 first
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        should_init =  should_init_vdi[:, vdi_index - 1]
+        # for vdis who are new to the observation, set its state to 0 first
         zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key])
         # and then initialize it using rssm initial function
         prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init)))
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        should_init =  should_init_other[:, other_index - 1]
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        should_init =  should_init_vpi[:, vpi_index - 1]
         zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key])
         prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init)))
     
@@ -468,17 +468,17 @@ class TwoBranchRSSM(nj.Module):
         stoch = dist.sample(seed=nj.rng())
         # for post and prior dict, h(deter) is the same
         post = {'stoch': stoch, 'deter': prior['deter'], **stats}
-      elif key.startswith('npc_'):
+      elif key.startswith('vdi_'):
         x = jnp.concatenate([prior['deter'], embed_dict[key]], -1)
-        x = self.get('npc_obs_out', Linear, **self._kw)(x)
-        stats = self._stats('npc_obs_stats', x)
+        x = self.get('vdi_obs_out', Linear, **self._kw)(x)
+        stats = self._stats('vdi_obs_stats', x)
         dist = self.get_dist(stats)
         stoch = dist.sample(seed=nj.rng())
         post = {'stoch': stoch, 'deter': prior['deter'], **stats}
-      elif key.startswith('other_'):
+      elif key.startswith('vpi_'):
         x = jnp.concatenate([prior['deter'], embed_dict[key]], -1)
-        x = self.get('other_obs_out', Linear, **self._kw)(x)
-        stats = self._stats('other_obs_stats', x)
+        x = self.get('vpi_obs_out', Linear, **self._kw)(x)
+        stats = self._stats('vpi_obs_stats', x)
         dist = self.get_dist(stats)
         stoch = dist.sample(seed=nj.rng())
         post = {'stoch': stoch, 'deter': prior['deter'], **stats}
@@ -493,10 +493,10 @@ class TwoBranchRSSM(nj.Module):
       prev_action *= sg(self._action_clip / jnp.maximum(
           self._action_clip, jnp.abs(prev_action)))
 
-    # different branch for ego, npc_1...npc_n, other_1...other_n state
+    # different branch for ego, vdi_1...vdi_n, vpi_1...vpi_n state
     prior_dict = {}
     for key in prev_state_dict.keys():
-      if key.startswith(('ego', 'npc_', 'other_')):
+      if key.startswith(('ego', 'vdi_', 'vpi_')):
         prev_stoch = prev_state_dict[key]['stoch'] # z(t-1)
         deter = prev_state_dict[key]['deter'] # h(t-1)
         # reshape discret stoch(z), make it flatten, e.g. batch x 32 x 32 -> batch x 1024
@@ -508,7 +508,7 @@ class TwoBranchRSSM(nj.Module):
           shape = prev_action.shape[:-2] + (np.prod(prev_action.shape[-2:]),)
           prev_action = prev_action.reshape(shape)
 
-        # different branches for ego, npcs and others
+        # different branches for ego, vdis and vpis
         if key.startswith('ego'):
           # give (z,a)(t-1) and h(t-1) to GRU, get ^z(t) and h(t) and logits(t)
           x = jnp.concatenate([prev_stoch, prev_action], -1)
@@ -522,21 +522,21 @@ class TwoBranchRSSM(nj.Module):
           stoch = dist.sample(seed=nj.rng())
           # prior
           prior = {'stoch': stoch, 'deter': deter, **stats}
-        elif key.startswith('npc_'):
+        elif key.startswith('vdi_'):
           x = jnp.concatenate([prev_stoch, prev_action], -1)
-          x = self.get('npc_img_in', Linear, **self._kw)(x)
-          x, deter = self._gru('npc_gru', x, deter)
-          x = self.get('npc_img_out', Linear, **self._kw)(x)
-          stats = self._stats('npc_img_stats', x)
+          x = self.get('vdi_img_in', Linear, **self._kw)(x)
+          x, deter = self._gru('vdi_gru', x, deter)
+          x = self.get('vdi_img_out', Linear, **self._kw)(x)
+          stats = self._stats('vdi_img_stats', x)
           dist = self.get_dist(stats)
           stoch = dist.sample(seed=nj.rng())
           prior = {'stoch': stoch, 'deter': deter, **stats}
-        elif key.startswith('other_'):
+        elif key.startswith('vpi_'):
           x = jnp.concatenate([prev_stoch, prev_action], -1)
-          x = self.get('other_img_in', Linear, **self._kw)(x)
-          x, deter = self._gru('other_gru', x, deter)
-          x = self.get('other_img_out', Linear, **self._kw)(x)
-          stats = self._stats('other_img_stats', x)
+          x = self.get('vpi_img_in', Linear, **self._kw)(x)
+          x, deter = self._gru('vpi_gru', x, deter)
+          x = self.get('vpi_img_out', Linear, **self._kw)(x)
+          stats = self._stats('vpi_img_stats', x)
           dist = self.get_dist(stats)
           stoch = dist.sample(seed=nj.rng())
           prior = {'stoch': stoch, 'deter': deter, **stats}
@@ -565,13 +565,13 @@ class TwoBranchRSSM(nj.Module):
         x = self.get('ego_img_out', Linear, **self._kw)(deter)
         stats = self._stats('ego_img_stats', x)
         dist = self.get_dist(stats)
-      elif key.startswith('npc_'):
-        x = self.get('npc_img_out', Linear, **self._kw)(deter)
-        stats = self._stats('npc_img_stats', x)
+      elif key.startswith('vdi_'):
+        x = self.get('vdi_img_out', Linear, **self._kw)(deter)
+        stats = self._stats('vdi_img_stats', x)
         dist = self.get_dist(stats)
-      elif key.startswith('other_'):
-        x = self.get('other_img_out', Linear, **self._kw)(deter)
-        stats = self._stats('other_img_stats', x)
+      elif key.startswith('vpi_'):
+        x = self.get('vpi_img_out', Linear, **self._kw)(deter)
+        stats = self._stats('vpi_img_stats', x)
         dist = self.get_dist(stats)
     return cast(dist.mode())
   
@@ -645,13 +645,13 @@ class TwoBranchRSSM(nj.Module):
     else:
       return swap(input)
     
-  def dyn_loss(self, post_dict, prior_dict, mask_npc=1, mask_other=1, impl='kl', free=1.0):
+  def dyn_loss(self, post_dict, prior_dict, mask_vdi=1, mask_vpi=1, impl='kl', free=1.0):
     # get loss dims
     loss_dims = post_dict['ego']['deter'].shape[:2]
     loss_dict = {}
-    # sum up losses for npcs or others branch
-    npc_dyn_kl_loss = jnp.zeros(loss_dims)
-    other_dyn_kl_loss = jnp.zeros(loss_dims)
+    # sum up losses for vdis or vpis branch
+    vdi_dyn_kl_loss = jnp.zeros(loss_dims)
+    vpi_dyn_kl_loss = jnp.zeros(loss_dims)
     for key in post_dict.keys():
       # how to calculate dyn loss, impl is 'kl' by default
       if impl == 'kl':
@@ -663,31 +663,31 @@ class TwoBranchRSSM(nj.Module):
       # kl free
       if free:
         loss = jnp.maximum(loss, free)
-      # npc sum up
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        mask = mask_npc[:, :, npc_index - 1]
-        npc_dyn_kl_loss += loss * mask
-        loss_dict.update({'npc_dyn_kl': npc_dyn_kl_loss})
-      # other sum up
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        mask = mask_other[:, :, other_index - 1]
-        other_dyn_kl_loss += loss * mask
-        loss_dict.update({'other_dyn_kl': other_dyn_kl_loss})
+      # vdi sum up
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        mask = mask_vdi[:, :, vdi_index - 1]
+        vdi_dyn_kl_loss += loss * mask
+        loss_dict.update({'vdi_dyn_kl': vdi_dyn_kl_loss})
+      # vpi sum up
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        mask = mask_vpi[:, :, vpi_index - 1]
+        vpi_dyn_kl_loss += loss * mask
+        loss_dict.update({'vpi_dyn_kl': vpi_dyn_kl_loss})
       # ego
       else:
         loss_dict.update({key + '_dyn_kl': loss})
     # print(loss_dict.keys())
     return loss_dict
 
-  def rep_loss(self, post_dict, prior_dict, mask_npc=1, mask_other=1, impl='kl', free=1.0):
+  def rep_loss(self, post_dict, prior_dict, mask_vdi=1, mask_vpi=1, impl='kl', free=1.0):
     # get loss dims
     loss_dims = post_dict['ego']['deter'].shape[:2]
     loss_dict = {}
-    # sum up losses for npcs or others branch
-    npc_rep_kl_loss = jnp.zeros(loss_dims)
-    other_rep_kl_loss = jnp.zeros(loss_dims)
+    # sum up losses for vdis or vpis branch
+    vdi_rep_kl_loss = jnp.zeros(loss_dims)
+    vpi_rep_kl_loss = jnp.zeros(loss_dims)
     for key in post_dict.keys():
       # how to calculate rep loss, impl is 'kl' by default
       if impl == 'kl':
@@ -704,18 +704,18 @@ class TwoBranchRSSM(nj.Module):
       # kl free
       if free:
         loss = jnp.maximum(loss, free)
-      # npc sum up
-      if key.startswith('npc_'):
-        npc_index = int(key.split('_')[-1])
-        mask = mask_npc[:, :, npc_index - 1]
-        npc_rep_kl_loss += loss * mask
-        loss_dict.update({'npc_rep_kl': npc_rep_kl_loss})
-      # other sum up
-      elif key.startswith('other_'):
-        other_index = int(key.split('_')[-1])
-        mask = mask_other[:, :, other_index - 1]
-        other_rep_kl_loss += loss * mask
-        loss_dict.update({'other_rep_kl': other_rep_kl_loss})
+      # vdi sum up
+      if key.startswith('vdi_'):
+        vdi_index = int(key.split('_')[-1])
+        mask = mask_vdi[:, :, vdi_index - 1]
+        vdi_rep_kl_loss += loss * mask
+        loss_dict.update({'vdi_rep_kl': vdi_rep_kl_loss})
+      # vpi sum up
+      elif key.startswith('vpi_'):
+        vpi_index = int(key.split('_')[-1])
+        mask = mask_vpi[:, :, vpi_index - 1]
+        vpi_rep_kl_loss += loss * mask
+        loss_dict.update({'vpi_rep_kl': vpi_rep_kl_loss})
       # ego
       else:
         loss_dict.update({key + '_rep_kl': loss})
@@ -759,7 +759,7 @@ class OneBranchEncoder(nj.Module):
       # 初始化共享轨迹编码器，提取轨迹特征，对应论文中的shared trajectory encoder
       self._traj_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=symlog_inputs, name='traj_mlp')
       
-      # for ego, npc and other features, using different mlp
+      # for ego, vdi and vpi features, using different mlp
       # 
       self._ego_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='ego_mlp')
       
@@ -794,12 +794,12 @@ class OneBranchEncoder(nj.Module):
     if self.mlp_shapes:
       for key in self.mlp_shapes:
         ob = jaxutils.cast_to_compute(data[key].astype(f32))
-        if key.startswith(('ego', 'npc_', 'other_')):
+        if key.startswith(('ego', 'vdi_', 'vpi_')):
           traj_features = self._traj_mlp(ob)
           traj_features = traj_features.reshape((traj_features.shape[0], -1))
           if key.startswith('ego'):
             features = self._ego_mlp(traj_features)
-          elif key.startswith('npc_') or key.startswith('other_'):
+          elif key.startswith('vdi_') or key.startswith('vpi_'):
             features = self._vehicle_mlp(traj_features)
         else:
           # features = self._map_mlp(ob)
@@ -823,7 +823,7 @@ def multi_head_attention(q, k, v, mask, drop_out=0.1):
   return out, attention
 
 class BranchEgoAttention(nj.Module):
-  # it considers all vehicles around ego (npc + other) compared with EgoAttention class
+  # it considers all vehicles around ego (vdi + vpi) compared with EgoAttention class
   def __init__(
     self, shape, layers, heads, units_per_head, inputs=['tensor'], dims=None, 
     symlog_inputs=False, **kw):
@@ -850,25 +850,25 @@ class BranchEgoAttention(nj.Module):
     feature_dict = {key: self._inputs(value) for key, value in inputs_dict.items() if isinstance(value, dict)}
     if self._symlog_inputs:
       feature_dict = {key: jaxutils.symlog(value) for key, value in feature_dict.items()}
-    # use attention mechanism to fuse ego and npc features together
-    npc_mask = inputs_dict['mask_npc']
-    npc_num = npc_mask.shape[-1]
-    other_mask = inputs_dict['mask_other']
-    other_num = other_mask.shape[-1]
-    # concat ego and npc features together in entity dimension
+    # use attention mechanism to fuse ego and vdi features together
+    vdi_mask = inputs_dict['mask_vdi']
+    vdi_num = vdi_mask.shape[-1]
+    vpi_mask = inputs_dict['mask_vpi']
+    vpi_num = vpi_mask.shape[-1]
+    # concat ego and vdi features together in entity dimension
     feature_dict = {key: jnp.expand_dims(value, axis=-2) for key, value in feature_dict.items()}
     ego_features = feature_dict['ego']
     ego_features = jaxutils.cast_to_compute(ego_features)
-    vehicle_features = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'npc_{i+1}'] for i in range(npc_num)] + [feature_dict[f'other_{i+1}'] for i in range(other_num)], axis=-2)
-    # vehicle_features = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'npc_{i+1}'] for i in range(npc_num)], axis=-2)
+    vehicle_features = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)] + [feature_dict[f'vpi_{i+1}'] for i in range(vpi_num)], axis=-2)
+    # vehicle_features = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)], axis=-2)
     vehicle_features = jaxutils.cast_to_compute(vehicle_features)
     # attention
     # Dimensions: Batch*Length, entity, head, feature_per_head
     q_ego = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(ego_features).reshape([-1, 1, self._heads, self._units_per_head])
-    k_all = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + npc_num + other_num, self._heads, self._units_per_head])
-    v_all = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + npc_num + other_num, self._heads, self._units_per_head])
-    # k_all = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + npc_num, self._heads, self._units_per_head])
-    # v_all = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + npc_num, self._heads, self._units_per_head])
+    k_all = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
+    v_all = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
+    # k_all = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + vdi_num, self._heads, self._units_per_head])
+    # v_all = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(vehicle_features).reshape([-1, 1 + vdi_num, self._heads, self._units_per_head])
     # Dimensions: Batch*Length, head, entity, feature_per_head
     q_ego = q_ego.transpose(0,2,1,3)
     k_all = k_all.transpose(0,2,1,3)
@@ -881,15 +881,15 @@ class BranchEgoAttention(nj.Module):
     print('v shape:', v_all.shape)
     # mask Dimensions: Batch*Length, head, 1, entity
     ego_mask = jnp.ones(list(q_ego.shape[:1]) + [1,1]) # Batch*Length, 1, 1
-    npc_mask = npc_mask.reshape(-1, 1, npc_num)
-    other_mask = other_mask.reshape(-1, 1, other_num)
-    mask = jnp.concatenate([ego_mask, npc_mask, other_mask], axis=-1).reshape([-1, 1, 1, npc_num + other_num + 1])
-    # mask = jnp.concatenate([ego_mask, npc_mask], axis=-1).reshape([-1, 1, 1, npc_num + 1])
+    vdi_mask = vdi_mask.reshape(-1, 1, vdi_num)
+    vpi_mask = vpi_mask.reshape(-1, 1, vpi_num)
+    mask = jnp.concatenate([ego_mask, vdi_mask, vpi_mask], axis=-1).reshape([-1, 1, 1, vdi_num + vpi_num + 1])
+    # mask = jnp.concatenate([ego_mask, vdi_mask], axis=-1).reshape([-1, 1, 1, vdi_num + 1])
     mask = jnp.repeat(mask, self._heads, axis=1)
     # print('mask shape', mask.shape)
-    # TODO: the attention of ego and npc can be get through 'different attention layers', 
-    # since they do different tasks in latter parts(npc for future prediction and ego for actor/critic/reward/count)
-    # yet we use different mlp head to get a different attention result for ego and npc for now
+    # TODO: the attention of ego and vdi can be get through 'different attention layers', 
+    # since they do different tasks in latter parts(vdi for future prediction and ego for actor/critic/reward/count)
+    # yet we use different mlp head to get a different attention result for ego and vdi for now
     ego_attention_out, ego_attention_mat = multi_head_attention(q_ego, k_all, v_all, mask, drop_out=False)
     # Dimensions(back to): Batch*Length, entity, head, feature_per_head
     ego_attention_out = ego_attention_out.transpose(0,2,1,3)
@@ -950,7 +950,7 @@ class OneBranchDecoder(nj.Module):
     if self.mlp_shapes:
       # vehicle history trajectory reconstruction
       self._ego_mlp = MLP(self.mlp_shapes['ego'], mlp_layers, mlp_units, **mlp_kw, name='ego_mlp')
-      self._vehicle_mlp = MLP(self.mlp_shapes['npc_1'], mlp_layers, mlp_units, **mlp_kw, name='vehicle_mlp')
+      self._vehicle_mlp = MLP(self.mlp_shapes['vdi_1'], mlp_layers, mlp_units, **mlp_kw, name='vehicle_mlp')
 
   def __call__(self, inputs_dict, drop_loss_indices=None):
     dists_dict = {}
@@ -975,7 +975,7 @@ class OneBranchDecoder(nj.Module):
         featrue = self._inputs(inputs_dict[key.replace('_prediction', '')])
         if key.startswith('ego'):
           dist = self._ego_mlp(featrue)
-        elif key.startswith('npc_') or key.startswith('other_'):
+        elif key.startswith('vdi_') or key.startswith('vpi_'):
           dist = self._vehicle_mlp(featrue)
         dists_dict.update({key: dist})
     return dists_dict
@@ -1033,8 +1033,8 @@ class TwoBranchDecoder(nj.Module):
     if self.mlp_shapes:
       # vehicle history trajectory reconstruction
       self._ego_mlp = MLP(self.mlp_shapes['ego'], mlp_layers, mlp_units, **mlp_kw, name='ego_mlp')
-      self._npc_mlp = MLP(self.mlp_shapes['npc_1'], mlp_layers, mlp_units, **mlp_kw, name='npc_mlp')
-      self._other_mlp = MLP(self.mlp_shapes['other_1'], mlp_layers, mlp_units, **mlp_kw, name='other_mlp')
+      self._vdi_mlp = MLP(self.mlp_shapes['vdi_1'], mlp_layers, mlp_units, **mlp_kw, name='vdi_mlp')
+      self._vpi_mlp = MLP(self.mlp_shapes['vpi_1'], mlp_layers, mlp_units, **mlp_kw, name='vpi_mlp')
 
   def __call__(self, inputs_dict, drop_loss_indices=None):
     dists_dict = {}
@@ -1059,10 +1059,10 @@ class TwoBranchDecoder(nj.Module):
         featrue = self._inputs(inputs_dict[key.replace('_prediction', '')])
         if key.startswith('ego'):
           dist = self._ego_mlp(featrue)
-        elif key.startswith('npc_'):
-          dist = self._npc_mlp(featrue)
-        elif key.startswith('other_'):
-          dist = self._other_mlp(featrue)
+        elif key.startswith('vdi_'):
+          dist = self._vdi_mlp(featrue)
+        elif key.startswith('vpi_'):
+          dist = self._vpi_mlp(featrue)
         dists_dict.update({key: dist})
     return dists_dict
 

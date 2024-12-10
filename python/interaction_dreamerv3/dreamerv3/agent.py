@@ -31,7 +31,7 @@ class Agent(nj.Module):
     self.act_space = act_space['action']
     self.step = step
 
-    # obs_space:{'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_npc': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_npc': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), ...}
+    # obs_space:{'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), ...}
     # act_space:{'action': Space(dtype=float32, shape=(4,), low=0, high=1)}
     # config:{略}
     # create world model
@@ -62,15 +62,15 @@ class Agent(nj.Module):
     (prev_latent, prev_action), task_state, expl_state = state
 
     # sample a action from the actor
-    # NOTE: obs for ego and npc include id and traj state ---- currently dont know how to use id state
+    # NOTE: obs for ego and vdi include id and traj state ---- currently dont know how to use id state
     embed_dict = self.wm.encoder(obs)
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       post_dict, _ = self.wm.rssm.obs_step(
-          prev_latent, prev_action, embed_dict, obs['is_first'], obs['should_init_npc'], obs['should_init_other'], obs['mask_npc'], obs['mask_other'])
+          prev_latent, prev_action, embed_dict, obs['is_first'], obs['should_init_vdi'], obs['should_init_vpi'], obs['mask_vdi'], obs['mask_vpi'])
     elif self.config.task == 'interaction_branch':
       post_dict, _ = self.wm.rssm.obs_step(
-          prev_latent, prev_action, embed_dict, obs['is_first'], obs['should_init_npc'], obs['should_init_other'])
+          prev_latent, prev_action, embed_dict, obs['is_first'], obs['should_init_vdi'], obs['should_init_vpi'])
     elif self.config.task == 'interaction_recon':
       post_dict, _ = self.wm.rssm.obs_step(
           prev_latent, prev_action, embed_dict, obs['is_first'])
@@ -79,12 +79,12 @@ class Agent(nj.Module):
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       feats_dict = {k: v for k,v in post_dict.items()}
-      feats_dict.update({'mask_npc': obs['mask_npc']})
+      feats_dict.update({'mask_vdi': obs['mask_vdi']})
       ego_attention_out, ego_attention_mat = self.wm.ego_attention(feats_dict)
     elif self.config.task == 'interaction_branch':
       feats_dict = {k: v for k,v in post_dict.items()}
-      feats_dict.update({'mask_npc': obs['mask_npc']})
-      feats_dict.update({'mask_other': obs['mask_other']})
+      feats_dict.update({'mask_vdi': obs['mask_vdi']})
+      feats_dict.update({'mask_vpi': obs['mask_vpi']})
       ego_attention_out, ego_attention_mat = self.wm.ego_attention_branch(feats_dict)
     
     # TODO: an elegant way to use different modules
@@ -123,8 +123,8 @@ class Agent(nj.Module):
     (post_dict, _), _, _ = state
     feats_dict = {k: v for k,v in post_dict.items()}
     # feats_dict.update({
-    #                    'mask_npc': obs['mask_npc'],
-    #                    'mask_other': obs['mask_other']
+    #                    'mask_vdi': obs['mask_vdi'],
+    #                    'mask_vpi': obs['mask_vpi']
     #                    })
     # predict_attention_out_dict, predict_attention_mat_dict = self.wm.predict_attention(feats_dict)
     # prediciton_symlog_dist_dict = self.wm.heads['decoder'](feats_dict, predict_attention_out_dict)
@@ -138,7 +138,7 @@ class Agent(nj.Module):
     # 1. preprocess data
     data = self.preprocess(data)
 
-    # 2. train world models, and record losses and other values
+    # 2. train world models, and record losses and vpi values
     state, wm_outs, mets = self.wm.train(data, state)
     metrics.update(mets)
     # print('2 - wm train done')
@@ -148,7 +148,7 @@ class Agent(nj.Module):
     # TODO: in context, for data we only consider is_terminal like in dmv2, is that important?
     # TODO: an elegant way to use different modules
     context = {**wm_outs['post']} # context = {**data, **wm_outs['post']}
-    aux_key_list = ['is_terminal', 'mask_npc', 'mask_other'] if self.config.task in ['interaction_prediction', 'interaction_branch'] else ['is_terminal']
+    aux_key_list = ['is_terminal', 'mask_vdi', 'mask_vpi'] if self.config.task in ['interaction_prediction', 'interaction_branch'] else ['is_terminal']
     for key in aux_key_list:
       context.update({key: data[key]})
     start = tree_map(lambda x: x.reshape([-1] + list(x.shape[2:])), context)
@@ -182,7 +182,7 @@ class Agent(nj.Module):
     return report
 
   def preprocess(self, obs):
-    # print(obs['id_npc'])
+    # print(obs['id_vdi'])
     # uniform data type and scale image
     obs = obs.copy()
     for key, value in obs.items():
@@ -213,8 +213,8 @@ class WorldModel(nj.Module):
       # encoder for drive trajectories and map information
       # self.encoder._traj_mlp  = xxx编码器(MLP)
       # self.encoder._ego_mlp   = xxx编码器(MLP)
-      # self.encoder._npc_mlp   = xxx编码器(MLP)
-      # self.encoder._other_mlp = xxx编码器(MLP)
+      # self.encoder._vdi_mlp   = xxx编码器(MLP)
+      # self.encoder._vpi_mlp = xxx编码器(MLP)
       self.encoder = nets_PIWM.PIWMEncoder(shapes, **config.encoder, name='enc')
       # 初始化PredictAttention，对应论文的self-attention模块
       # attention modules which are used in different heads
@@ -265,17 +265,17 @@ class WorldModel(nj.Module):
     
     # TODO: an elegant way to ...
     if self.config.task == 'interaction_prediction':
-      # the prediction loss for different npcs is summed up to show
+      # the prediction loss for different vdis is summed up to show
       for k in self.heads['decoder'].mlp_shapes:
-        if k.startswith('npc_'):
-          if 'npc_prediction' not in scales.keys():
-            scales.update({'npc_prediction': vector})
+        if k.startswith('vdi_'):
+          if 'vdi_prediction' not in scales.keys():
+            scales.update({'vdi_prediction': vector})
         else:
           scales.update({k: vector})
     elif self.config.task == 'interaction_branch':
-      # the recon loss for ego and different npcs and others are summed up to show
+      # the recon loss for ego and different vdis and vpis are summed up to show
       for k in self.heads['decoder'].mlp_shapes:
-        if k.startswith(('ego', 'npc_', 'other_')):
+        if k.startswith(('ego', 'vdi_', 'vpi_')):
           if 'vehicle_recon' not in scales.keys():
             scales.update({'vehicle_recon': vector})
         else:
@@ -322,10 +322,10 @@ class WorldModel(nj.Module):
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       post_dict, prior_dict = self.rssm.observe(
-          embed_dict, prev_actions, data['is_first'], data['should_init_npc'], data['should_init_other'], data['mask_npc'], data['mask_other'], prev_latent)
+          embed_dict, prev_actions, data['is_first'], data['should_init_vdi'], data['should_init_vpi'], data['mask_vdi'], data['mask_vpi'], prev_latent)
     elif self.config.task == 'interaction_branch':
       post_dict, prior_dict = self.rssm.observe(
-          embed_dict, prev_actions, data['is_first'], data['should_init_npc'], data['should_init_other'], prev_latent)
+          embed_dict, prev_actions, data['is_first'], data['should_init_vdi'], data['should_init_vpi'], prev_latent)
     elif self.config.task == 'interaction_recon':
       post_dict, prior_dict = self.rssm.observe(
           embed_dict, prev_actions, data['is_first'], prev_latent)
@@ -341,15 +341,15 @@ class WorldModel(nj.Module):
     # get agent to agent attention
     if self.config.task == 'interaction_prediction':
       feats_dict.update({
-                        'mask_npc': data['mask_npc'],
-                        'mask_other': data['mask_other'],
+                        'mask_vdi': data['mask_vdi'],
+                        'mask_vpi': data['mask_vpi'],
                          })
       # predict_attention_out_dict, predict_attention_mat_dict = self.predict_attention(feats_dict)
       ego_attention_out, ego_attention_mat = self.ego_attention(feats_dict)
     elif self.config.task == 'interaction_branch':
       feats_dict.update({
-                        'mask_npc': data['mask_npc'],
-                        'mask_other': data['mask_other'],
+                        'mask_vdi': data['mask_vdi'],
+                        'mask_vpi': data['mask_vpi'],
                          })
       ego_attention_out, ego_attention_mat = self.ego_attention_branch(feats_dict)
 
@@ -373,17 +373,17 @@ class WorldModel(nj.Module):
       out = out if isinstance(out, dict) else {name: out}
       dists.update(out)
 
-    # calculate loss, for losses related to npc, we sum them up
+    # calculate loss, for losses related to vdi, we sum them up
     losses = {}
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       # dyn and rep loss
-      losses['dyn'] = self.rssm.dyn_loss(post_dict, prior_dict, data['mask_npc'], data['mask_other'], **self.config.dyn_loss)
-      losses['rep'] = self.rssm.rep_loss(post_dict, prior_dict, data['mask_npc'], data['mask_other'], **self.config.rep_loss)
-      # sum up npc future prediction loss
+      losses['dyn'] = self.rssm.dyn_loss(post_dict, prior_dict, data['mask_vdi'], data['mask_vpi'], **self.config.dyn_loss)
+      losses['rep'] = self.rssm.rep_loss(post_dict, prior_dict, data['mask_vdi'], data['mask_vpi'], **self.config.rep_loss)
+      # sum up vdi future prediction loss
       loss = jnp.zeros(embed_dict['ego'].shape[:2])
       for key, dist in dists.items():
-        if key.startswith('npc_'):
+        if key.startswith('vdi_'):
           gt = data[key].astype(jnp.float32)
           # mask out zero-padded future trajectories
           valid = jnp.where(gt, 1, 0)
@@ -391,10 +391,10 @@ class WorldModel(nj.Module):
           loss += -dist.log_prob(gt, valid)
       # TODO: below 2 line can ctrl+[? 
       assert loss.shape == embed_dict['ego'].shape[:2], (key, loss.shape) # embed_dict['ego'].shape[:2] is batch size (16, 64)
-      losses.update({'npc_prediction': loss})
-      # other losses (ego future prediction, reward, cont)
+      losses.update({'vdi_prediction': loss})
+      # vpi losses (ego future prediction, reward, cont)
       for key, dist in dists.items():
-        if not key.startswith('npc_'):
+        if not key.startswith('vdi_'):
           gt = data[key].astype(jnp.float32)
           loss = -dist.log_prob(gt)
           assert loss.shape == embed_dict['ego'].shape[:2], (key, loss.shape) # embed_dict['ego'].shape[:2] is batch size (16, 64)
@@ -411,18 +411,18 @@ class WorldModel(nj.Module):
 
     elif self.config.task == 'interaction_branch':
       # dyn and rep loss
-      losses['dyn'] = self.rssm.dyn_loss(post_dict, prior_dict, data['mask_npc'], data['mask_other'], **self.config.dyn_loss)
-      losses['rep'] = self.rssm.rep_loss(post_dict, prior_dict, data['mask_npc'], data['mask_other'], **self.config.rep_loss)
-      # sum up vehicle(npc + other) branch recon loss
+      losses['dyn'] = self.rssm.dyn_loss(post_dict, prior_dict, data['mask_vdi'], data['mask_vpi'], **self.config.dyn_loss)
+      losses['rep'] = self.rssm.rep_loss(post_dict, prior_dict, data['mask_vdi'], data['mask_vpi'], **self.config.rep_loss)
+      # sum up vehicle(vdi + vpi) branch recon loss
       loss = jnp.zeros(embed_dict['ego'].shape[:2])
       for key, dist in dists.items():
-        if key.startswith(('ego', 'npc_', 'other_')):
+        if key.startswith(('ego', 'vdi_', 'vpi_')):
           loss += -dist.log_prob(data[key].astype(jnp.float32))
       assert loss.shape == embed_dict['ego'].shape[:2], (key, loss.shape)
       losses.update({'vehicle_recon': loss})
-      # other losses (reward, cont)
+      # vpi losses (reward, cont)
       for key, dist in dists.items():
-        if (not key.startswith('ego')) and (not key.startswith('npc_')) and (not key.startswith('other_')):
+        if (not key.startswith('ego')) and (not key.startswith('vdi_')) and (not key.startswith('vpi_')):
           loss = -dist.log_prob(data[key].astype(jnp.float32))
           assert loss.shape == embed_dict['ego'].shape[:2], (key, loss.shape)
           losses[key] = loss
@@ -470,20 +470,20 @@ class WorldModel(nj.Module):
     return model_loss.mean(), (state, out, metrics)
 
   def imagine(self, policy, start, horizon):
-    # start keys: 'action', 'cont', 'ego', 'is_first', 'is_last', 'is_terminal', 'npc_1', 'reward'...
+    # start keys: 'action', 'cont', 'ego', 'is_first', 'is_last', 'is_terminal', 'vdi_1', 'reward'...
     first_cont = (1.0 - start['is_terminal']).astype(jnp.float32)
-    # start state, which means ego and npc_1...npc_n, original the keys should be deter, logit, stoch 
+    # start state, which means ego and vdi_1...vdi_n, original the keys should be deter, logit, stoch 
     keys = list(self.rssm.initial(1).keys())
     start_dict = {k: v for k, v in start.items() if k in keys}
     
-    # NOTE: the mask of npc and other is unchanged during imagination (i.e the number of npc and other is fixed)
+    # NOTE: the mask of vdi and vpi is unchanged during imagination (i.e the number of vdi and vpi is fixed)
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       # update mask for attention
       feats_dict = {k: v for k,v in start_dict.items()}
       feats_dict.update({
-                        'mask_npc': start['mask_npc'],
-                        'mask_other': start['mask_other'],
+                        'mask_vdi': start['mask_vdi'],
+                        'mask_vpi': start['mask_vpi'],
                         })
       # for actor, the gradient is not backpropagated to the world model, but ego attention is updated
       ego_attention_out, ego_attention_mat = self.ego_attention(sg(feats_dict))
@@ -495,8 +495,8 @@ class WorldModel(nj.Module):
       # update mask for attention
       feats_dict = {k: v for k,v in start_dict.items()}
       feats_dict.update({
-                        'mask_npc': start['mask_npc'],
-                        'mask_other': start['mask_other'],
+                        'mask_vdi': start['mask_vdi'],
+                        'mask_vpi': start['mask_vpi'],
                         })
       ego_attention_out, ego_attention_mat = self.ego_attention_branch(sg(feats_dict))
       start_dict['attention'] = ego_attention_out
@@ -505,20 +505,20 @@ class WorldModel(nj.Module):
     elif self.config.task == 'interaction_recon':
       feats_dict = {k: v for k,v in start_dict.items()}
       start_dict['action'] = policy(feats_dict)
-    # print(mask_npc.shape, start_dict['action'].shape)
-    # print(start_dict.keys(), start_dict['ego']['deter'].shape, start_dict['ego']['stoch'].shape, start_dict['mask_npc'].shape, start_dict['action'].shape)
+    # print(mask_vdi.shape, start_dict['action'].shape)
+    # print(start_dict.keys(), start_dict['ego']['deter'].shape, start_dict['ego']['stoch'].shape, start_dict['mask_vdi'].shape, start_dict['action'].shape)
 
     # generate imagined trajetories using world model to train the actor and critc
     def step(prev, _):
       prev = prev.copy() # prev is prev prior_dict(or start_dict in the first step) plus action
       # TODO: an elegant way to use different modules
       if self.config.task == 'interaction_prediction':
-        prior_dict, _ = self.rssm.img_step(prev, prev.pop('action'), start['mask_npc'], start['mask_other'])
+        prior_dict, _ = self.rssm.img_step(prev, prev.pop('action'), start['mask_vdi'], start['mask_vpi'])
         feats_dict = {k: v for k,v in prior_dict.items()}
-        # NOTE: the mask of npc and other is unchanged during imagination
+        # NOTE: the mask of vdi and vpi is unchanged during imagination
         feats_dict.update({
-                          'mask_npc': start['mask_npc'],
-                          'mask_other': start['mask_other'],
+                          'mask_vdi': start['mask_vdi'],
+                          'mask_vpi': start['mask_vpi'],
                           })
         # for actor, the gradient is not backpropagated to the world model
         ego_attention_out, ego_attention_mat = self.ego_attention(sg(feats_dict))
@@ -529,10 +529,10 @@ class WorldModel(nj.Module):
       elif self.config.task == 'interaction_branch':
         prior_dict = self.rssm.img_step(prev, prev.pop('action'))
         feats_dict = {k: v for k,v in prior_dict.items()}
-        # NOTE: the mask of npc and other is unchanged during imagination
+        # NOTE: the mask of vdi and vpi is unchanged during imagination
         feats_dict.update({
-                          'mask_npc': start['mask_npc'],
-                          'mask_other': start['mask_other'],
+                          'mask_vdi': start['mask_vdi'],
+                          'mask_vpi': start['mask_vpi'],
                           })
         # for actor, the gradient is not backpropagated to the world model
         ego_attention_out, ego_attention_mat = self.ego_attention_branch(sg(feats_dict))
@@ -599,7 +599,7 @@ class WorldModel(nj.Module):
 
   def _metrics(self, data, dists, post_dict, prior_dict, losses, model_loss):
     metrics = {}
-    # TODO: dont consider entropy since data(for npc) changes across episodes (or consider its mean?, its shape is (batch x horizon))
+    # TODO: dont consider entropy since data(for vdi) changes across episodes (or consider its mean?, its shape is (batch x horizon))
     # entropy = lambda state: self.rssm.get_dist(state).entropy()
     # for key in prior_dict.keys():
     #   prior, post = prior_dict[key], post_dict[key]
@@ -679,7 +679,7 @@ class ImagActorCritic(nj.Module):
       if self.config.task == 'interaction_prediction':
         # NOTE: grad pass through ego_attention module in actor and critic
         # ego attention itself as a part of a-c is trained during imagination, 
-        # yet the gradients is not back propagated to the other parts world model
+        # yet the gradients is not back propagated to the vpi parts world model
         policy = lambda s, att: self.actor(sg(s), att).sample(seed=nj.rng())
       elif self.config.task == 'interaction_branch':
         policy = lambda s, att: self.actor(sg(s), att).sample(seed=nj.rng())
@@ -716,7 +716,7 @@ class ImagActorCritic(nj.Module):
     adv = jnp.stack(advs).sum(0)
     # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
-      # NOTE: grad pass through ego_attention module in actor and critic and not back propagated to the other parts of world model
+      # NOTE: grad pass through ego_attention module in actor and critic and not back propagated to the vpi parts of world model
       policy = self.actor(sg(traj), traj['attention'])
     elif self.config.task == 'interaction_branch':
       policy = self.actor(sg(traj), traj['attention'])

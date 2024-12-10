@@ -20,9 +20,9 @@ class Observation:
         self._map = interaction_map
         self._map_centerline_list = map_centerline_list
         self._ego_vehicles_dict = controlled_vehicles_dict['ego']
-        self._react_npc_vehicle_dict = controlled_vehicles_dict['npc']
+        self._react_vdi_vehicle_dict = controlled_vehicles_dict['vdi']
 
-        self._npc_num = settings['npc_num'] + settings['other_num']
+        self._vdi_num = settings['vdi_num'] + settings['vpi_num']
         self._control_steering = settings['control_steering']
 
         # routes related info
@@ -30,7 +30,7 @@ class Observation:
         self.ego_route_lanelet_dict = dict()
         self.ego_closet_bound_points = dict()
 
-        self.react_npc_route_dict = dict()
+        self.react_vdi_route_dict = dict()
 
         # termination judgement
         self.reach_goal = dict()
@@ -48,14 +48,14 @@ class Observation:
         self.future_route_points = dict()
 
         self.ego_shape = dict()
-        self.react_npc_shape = dict()
+        self.react_vdi_shape = dict()
 
         # self.ego_route_points = dict()
         # self.ego_route_target_speed = dict()
         self.ego_route_left_bound_points = dict()
         self.ego_route_right_bound_points = dict()
 
-        self.react_npc_route_points = dict()
+        self.react_vdi_route_points = dict()
 
         self.ego_current_speed = dict()
         self.target_speed = dict()
@@ -83,10 +83,10 @@ class Observation:
         self.min_interval_distance = 2 # minmum interval distance of waypoint (meter)
         
 
-    def reset(self, route_type, ego_route_dict, react_npc_route_dict, route_lanelet_dict=None):
+    def reset(self, route_type, ego_route_dict, react_vdi_route_dict, route_lanelet_dict=None):
         self.route_type = route_type
         self.ego_route_dict = ego_route_dict
-        self.react_npc_route_dict = react_npc_route_dict
+        self.react_vdi_route_dict = react_vdi_route_dict
 
         self.ego_route_lanelet_dict = route_lanelet_dict
 
@@ -101,7 +101,7 @@ class Observation:
         self.trajectory_speed.clear()
 
         self.ego_shape.clear()
-        self.react_npc_shape.clear()
+        self.react_vdi_shape.clear()
 
         # self.ego_route_points.clear()
         # self.ego_route_target_speed.clear()
@@ -109,7 +109,7 @@ class Observation:
         self.ego_route_right_bound_points.clear()
         self.ego_closet_bound_points.clear()
 
-        self.react_npc_route_points.clear()
+        self.react_vdi_route_points.clear()
 
         self.distance_from_bound.clear()
         self.lane_observation.clear()
@@ -153,7 +153,7 @@ class Observation:
                 surrounding_list.append(add_dict)
 
         # 2. get interaction vehicles and their basic observation
-        interaction_list = heapq.nsmallest(self._npc_num, surrounding_list, key=lambda s: s['distance'])
+        interaction_list = heapq.nsmallest(self._vdi_num, surrounding_list, key=lambda s: s['distance'])
 
         # 3. get their ids and full observation
         interaction_id_list = []
@@ -187,15 +187,15 @@ class Observation:
 
         # 4. zero padding and attention mask
         # TODO: the len of single ob should be a hyperparameter
-        attention_mask = list(np.ones(self._npc_num + 1))
-        npc_obs_size = self._npc_num * 7 # len(single_observation)
-        if len(interaction_observation_list) < npc_obs_size:
-            zero_padding_num = int((npc_obs_size - len(interaction_observation_list)) / 7) # len(single_observation))
+        attention_mask = list(np.ones(self._vdi_num + 1))
+        vdi_obs_size = self._vdi_num * 7 # len(single_observation)
+        if len(interaction_observation_list) < vdi_obs_size:
+            zero_padding_num = int((vdi_obs_size - len(interaction_observation_list)) / 7) # len(single_observation))
             for _ in range(zero_padding_num):
                 attention_mask.pop()
             for _ in range(zero_padding_num):
                 attention_mask.append(0)
-            while len(interaction_observation_list) < npc_obs_size:
+            while len(interaction_observation_list) < vdi_obs_size:
                 interaction_observation_list.append(0)
 
         return interaction_id_list, interaction_observation_list, attention_mask
@@ -212,8 +212,8 @@ class Observation:
         react_ego_future_route_points_dict = dict()
         for ego_id in self._ego_vehicles_dict.keys():
             ego_future_route_points_dict[ego_id] = observation_dict['future_route_points'][ego_id]
-        for react_npc_id in self._react_npc_vehicle_dict.keys():
-            react_ego_future_route_points_dict[react_npc_id] = observation_dict['future_route_points'][react_npc_id]
+        for react_vdi_id in self._react_vdi_vehicle_dict.keys():
+            react_ego_future_route_points_dict[react_vdi_id] = observation_dict['future_route_points'][react_vdi_id]
 
         return ego_future_route_points_dict, react_ego_future_route_points_dict
 
@@ -237,7 +237,7 @@ class Observation:
     def check_collision(self, ego_state_dict, vehicles_state_dict, interaction_vehicles_id):
         for veh_id, veh_state_dict in vehicles_state_dict.items():
             if veh_id in interaction_vehicles_id:
-                distance, collision = geometry.ego_other_distance_and_collision(ego_state_dict, veh_state_dict)
+                distance, collision = geometry.ego_vpi_distance_and_collision(ego_state_dict, veh_state_dict)
                 if collision:
                     return True
         return False
@@ -273,29 +273,29 @@ class Observation:
             # ego current speed value
             self.ego_current_speed[ego_id] = [ego_state_dict['speed']]
             
-            # get other vehicles' state, including other egos, react npcs, and log/record npcs
-            other_vehicles_state_dict = dict()
-            for other_ego_id, other_ego_state in self._ego_vehicles_dict.items(): # other egos
-                if other_ego_id == ego_id:
+            # get vpi vehicles' state, including vpi egos, react vdis, and log/record vdis
+            vpi_vehicles_state_dict = dict()
+            for vpi_ego_id, vpi_ego_state in self._ego_vehicles_dict.items(): # vpi egos
+                if vpi_ego_id == ego_id:
                     continue
                 else:
-                    other_vehicles_state_dict[other_ego_id] = dict()
-                    other_vehicles_state_dict[other_ego_id]['loc'] = [other_ego_state._current_state.x, other_ego_state._current_state.y]
-                    other_vehicles_state_dict[other_ego_id]['speed'] = math.sqrt(other_ego_state._current_state.vx ** 2 + other_ego_state._current_state.vy ** 2)
-                    other_vehicles_state_dict[other_ego_id]['heading'] = other_ego_state._current_state.psi_rad
-                    other_vehicles_state_dict[other_ego_id]['polygon'] = self._map.ego_polygon_dict[other_ego_id]
-            for react_npc_id, react_npc_state in self._react_npc_vehicle_dict.items(): # react npcs
-                other_vehicles_state_dict[react_npc_id] = dict()
-                other_vehicles_state_dict[react_npc_id]['loc'] = [react_npc_state._current_state.x, react_npc_state._current_state.y]
-                other_vehicles_state_dict[react_npc_id]['speed'] = math.sqrt(react_npc_state._current_state.vx ** 2 + react_npc_state._current_state.vy ** 2)
-                other_vehicles_state_dict[react_npc_id]['heading'] = react_npc_state._current_state.psi_rad
-                other_vehicles_state_dict[react_npc_id]['polygon'] = self._map.react_npc_polygon_dict[react_npc_id]
-            for record_npc_id, record_npc_motion_state in self._map.record_npc_motion_state_dict.items(): # log/record npcs
-                other_vehicles_state_dict[record_npc_id] = dict()
-                other_vehicles_state_dict[record_npc_id]['loc'] = [record_npc_motion_state.x, record_npc_motion_state.y]
-                other_vehicles_state_dict[record_npc_id]['speed'] = math.sqrt(record_npc_motion_state.vx ** 2 + record_npc_motion_state.vy ** 2)
-                other_vehicles_state_dict[record_npc_id]['heading'] = record_npc_motion_state.psi_rad
-                other_vehicles_state_dict[record_npc_id]['polygon'] = self._map.record_npc_polygon_dict[record_npc_id]
+                    vpi_vehicles_state_dict[vpi_ego_id] = dict()
+                    vpi_vehicles_state_dict[vpi_ego_id]['loc'] = [vpi_ego_state._current_state.x, vpi_ego_state._current_state.y]
+                    vpi_vehicles_state_dict[vpi_ego_id]['speed'] = math.sqrt(vpi_ego_state._current_state.vx ** 2 + vpi_ego_state._current_state.vy ** 2)
+                    vpi_vehicles_state_dict[vpi_ego_id]['heading'] = vpi_ego_state._current_state.psi_rad
+                    vpi_vehicles_state_dict[vpi_ego_id]['polygon'] = self._map.ego_polygon_dict[vpi_ego_id]
+            for react_vdi_id, react_vdi_state in self._react_vdi_vehicle_dict.items(): # react vdis
+                vpi_vehicles_state_dict[react_vdi_id] = dict()
+                vpi_vehicles_state_dict[react_vdi_id]['loc'] = [react_vdi_state._current_state.x, react_vdi_state._current_state.y]
+                vpi_vehicles_state_dict[react_vdi_id]['speed'] = math.sqrt(react_vdi_state._current_state.vx ** 2 + react_vdi_state._current_state.vy ** 2)
+                vpi_vehicles_state_dict[react_vdi_id]['heading'] = react_vdi_state._current_state.psi_rad
+                vpi_vehicles_state_dict[react_vdi_id]['polygon'] = self._map.react_vdi_polygon_dict[react_vdi_id]
+            for record_vdi_id, record_vdi_motion_state in self._map.record_vdi_motion_state_dict.items(): # log/record vdis
+                vpi_vehicles_state_dict[record_vdi_id] = dict()
+                vpi_vehicles_state_dict[record_vdi_id]['loc'] = [record_vdi_motion_state.x, record_vdi_motion_state.y]
+                vpi_vehicles_state_dict[record_vdi_id]['speed'] = math.sqrt(record_vdi_motion_state.vx ** 2 + record_vdi_motion_state.vy ** 2)
+                vpi_vehicles_state_dict[record_vdi_id]['heading'] = record_vdi_motion_state.psi_rad
+                vpi_vehicles_state_dict[record_vdi_id]['polygon'] = self._map.record_vdi_polygon_dict[record_vdi_id]
 
             # get current ego route point and target speed
             ego_route_points = geometry.get_route_point_with_heading_from_point_list(self.ego_route_dict[ego_id], self.min_interval_distance)
@@ -365,7 +365,7 @@ class Observation:
             self.ego_next_loc[ego_id] = geometry.get_ego_next_loc(ego_state_dict)
 
             # get record interaction social vehicles' id and observation in classic style
-            interaction_vehicles_id, interaction_vehicles_observation, attention_mask = self.get_interaction_vehicles_id_and_observation(ego_state_dict, other_vehicles_state_dict, detective_range=50)
+            interaction_vehicles_id, interaction_vehicles_observation, attention_mask = self.get_interaction_vehicles_id_and_observation(ego_state_dict, vpi_vehicles_state_dict, detective_range=50)
             
             self.interaction_vehicles_id[ego_id] = interaction_vehicles_id
             self.interaction_vehicles_observation[ego_id] = interaction_vehicles_observation
@@ -376,8 +376,8 @@ class Observation:
             reach_goal = self.check_reach_goal(ego_state_dict, goal_point)
             self.reach_goal[ego_id] = reach_goal
             
-            # Finish judgement 2: collision with other vehicles
-            ego_collision = self.check_collision(ego_state_dict, other_vehicles_state_dict, interaction_vehicles_id)
+            # Finish judgement 2: collision with vpi vehicles
+            ego_collision = self.check_collision(ego_state_dict, vpi_vehicles_state_dict, interaction_vehicles_id)
             self.collision[ego_id] = ego_collision
 
             # Finish judgement 3: deflection from current route/road
@@ -394,83 +394,83 @@ class Observation:
                 ego_deflection = False
             self.deflection[ego_id] = ego_deflection
         
-        surrounding_react_npc_list = []
-        # react npc observation (part of ego)
-        for react_npc_id, react_npc_state in self._react_npc_vehicle_dict.items():
-            # get npc shape, polygon and motion states
-            react_npc_state_dict = dict()
-            react_npc_state_dict['polygon'] = self._map.react_npc_polygon_dict[react_npc_id]
-            react_npc_state_dict['loc'] = [react_npc_state._current_state.x, react_npc_state._current_state.y]
-            react_npc_state_dict['speed'] = math.sqrt(react_npc_state._current_state.vx ** 2 + react_npc_state._current_state.vy ** 2)
-            react_npc_state_dict['heading'] = react_npc_state._current_state.psi_rad
-            # react npc shape
-            self.react_npc_shape[react_npc_id] = [react_npc_state._length, react_npc_state._width]
+        surrounding_react_vdi_list = []
+        # react vdi observation (part of ego)
+        for react_vdi_id, react_vdi_state in self._react_vdi_vehicle_dict.items():
+            # get vdi shape, polygon and motion states
+            react_vdi_state_dict = dict()
+            react_vdi_state_dict['polygon'] = self._map.react_vdi_polygon_dict[react_vdi_id]
+            react_vdi_state_dict['loc'] = [react_vdi_state._current_state.x, react_vdi_state._current_state.y]
+            react_vdi_state_dict['speed'] = math.sqrt(react_vdi_state._current_state.vx ** 2 + react_vdi_state._current_state.vy ** 2)
+            react_vdi_state_dict['heading'] = react_vdi_state._current_state.psi_rad
+            # react vdi shape
+            self.react_vdi_shape[react_vdi_id] = [react_vdi_state._length, react_vdi_state._width]
 
             # TODO: origin point(i.e. ego state['loc'] and ['heading']) should be a global viriable
-            distance = math.sqrt((react_npc_state_dict['loc'][0] - ego_state_dict['loc'][0])**2 + (react_npc_state_dict['loc'][1] - ego_state_dict['loc'][1])**2)
+            distance = math.sqrt((react_vdi_state_dict['loc'][0] - ego_state_dict['loc'][0])**2 + (react_vdi_state_dict['loc'][1] - ego_state_dict['loc'][1])**2)
             if detection_range:
-                y_relative = (react_npc_state_dict['loc'][1] - ego_state_dict['loc'][1])*np.sin(ego_state_dict['heading']) + (react_npc_state_dict['loc'][0] - ego_state_dict['loc'][0])*np.cos(ego_state_dict['heading'])
+                y_relative = (react_vdi_state_dict['loc'][1] - ego_state_dict['loc'][1])*np.sin(ego_state_dict['heading']) + (react_vdi_state_dict['loc'][0] - ego_state_dict['loc'][0])*np.cos(ego_state_dict['heading'])
                 # TODO: range of detection should be a hyperparameter
                 if distance < 60 and y_relative > -30:
                     # add it to the list
-                    add_dict = {'vehicle_id': react_npc_id, 'distance': distance}
-                    surrounding_react_npc_list.append(add_dict)
+                    add_dict = {'vehicle_id': react_vdi_id, 'distance': distance}
+                    surrounding_react_vdi_list.append(add_dict)
             else:
-                add_dict = {'vehicle_id': react_npc_id, 'distance': distance}
-                surrounding_react_npc_list.append(add_dict)
+                add_dict = {'vehicle_id': react_vdi_id, 'distance': distance}
+                surrounding_react_vdi_list.append(add_dict)
                 
-            # get npc future route points
-            react_npc_route_points = geometry.get_route_point_with_heading_from_point_list(self.react_npc_route_dict[react_npc_id], self.min_interval_distance)
-            react_npc_route_target_speed = geometry.get_target_speed_from_point_list(self.react_npc_route_dict[react_npc_id])
-            react_npc_target_speed, react_npc_future_route_points = geometry.get_target_speed_and_future_route_points(react_npc_state_dict, react_npc_route_points, react_npc_route_target_speed)
-            self.future_route_points[react_npc_id] = react_npc_future_route_points
+            # get vdi future route points
+            react_vdi_route_points = geometry.get_route_point_with_heading_from_point_list(self.react_vdi_route_dict[react_vdi_id], self.min_interval_distance)
+            react_vdi_route_target_speed = geometry.get_target_speed_from_point_list(self.react_vdi_route_dict[react_vdi_id])
+            react_vdi_target_speed, react_vdi_future_route_points = geometry.get_target_speed_and_future_route_points(react_vdi_state_dict, react_vdi_route_points, react_vdi_route_target_speed)
+            self.future_route_points[react_vdi_id] = react_vdi_future_route_points
 
-            # check if npc reach goal
-            react_npc_goal_point = react_npc_route_points[-1]
-            react_npc_reach_goal = self.check_reach_goal(react_npc_state_dict, react_npc_goal_point)
-            self.reach_goal[react_npc_id] = react_npc_reach_goal
+            # check if vdi reach goal
+            react_vdi_goal_point = react_vdi_route_points[-1]
+            react_vdi_reach_goal = self.check_reach_goal(react_vdi_state_dict, react_vdi_goal_point)
+            self.reach_goal[react_vdi_id] = react_vdi_reach_goal
         
-        # record npc state in trajectory style
-        surrounding_record_npc_list = []
-        for record_npc_id, record_npc_motion_state in self._map.record_npc_motion_state_dict.items():
-            record_npc_loc = [record_npc_motion_state.x, record_npc_motion_state.y]
-            distance = math.sqrt((record_npc_loc[0] - ego_state_dict['loc'][0])**2 + (record_npc_loc[1] - ego_state_dict['loc'][1])**2)
+        # record vdi state in trajectory style
+        surrounding_record_vdi_list = []
+        for record_vdi_id, record_vdi_motion_state in self._map.record_vdi_motion_state_dict.items():
+            record_vdi_loc = [record_vdi_motion_state.x, record_vdi_motion_state.y]
+            distance = math.sqrt((record_vdi_loc[0] - ego_state_dict['loc'][0])**2 + (record_vdi_loc[1] - ego_state_dict['loc'][1])**2)
             # TODO: range of detection should be a hyperparameter
             if detection_range:
-                y_relative = (record_npc_loc[1] - ego_state_dict['loc'][1])*np.sin(ego_state_dict['heading']) + (record_npc_loc[0] - ego_state_dict['loc'][0])*np.cos(ego_state_dict['heading'])
+                y_relative = (record_vdi_loc[1] - ego_state_dict['loc'][1])*np.sin(ego_state_dict['heading']) + (record_vdi_loc[0] - ego_state_dict['loc'][0])*np.cos(ego_state_dict['heading'])
                 if distance < 60 and y_relative > -30:
                     # add it to the list
-                    add_dict = {'vehicle_id': record_npc_id, 'distance': distance}
-                    surrounding_record_npc_list.append(add_dict)
+                    add_dict = {'vehicle_id': record_vdi_id, 'distance': distance}
+                    surrounding_record_vdi_list.append(add_dict)
             else:
-                add_dict = {'vehicle_id': record_npc_id, 'distance': distance}
-                surrounding_record_npc_list.append(add_dict)
+                add_dict = {'vehicle_id': record_vdi_id, 'distance': distance}
+                surrounding_record_vdi_list.append(add_dict)
 
-        # find closet self._npc_num vehicles, get order and state of them, by their distance to ego
-        surrounding_npc_list = surrounding_react_npc_list + surrounding_record_npc_list
-        surrounding_npc_list = heapq.nsmallest(self._npc_num, surrounding_npc_list, key=lambda s: s['distance'])
+        # find closet self._vdi_num vehicles, get order and state of them, by their distance to ego
+        surrounding_vdi_list = surrounding_react_vdi_list + surrounding_record_vdi_list
+        surrounding_vdi_list = heapq.nsmallest(self._vdi_num, surrounding_vdi_list, key=lambda s: s['distance'])
         surrounding_id_list = []
-        for npc_info in surrounding_npc_list:
-            npc_id = npc_info['vehicle_id']
-            surrounding_id_list.append(npc_id)
-            if npc_id in self._map.past_record_npc_vehicle_state.keys():
+        for vdi_info in surrounding_vdi_list:
+            vdi_id = vdi_info['vehicle_id']
+            surrounding_id_list.append(vdi_id)
+            if vdi_id in self._map.past_record_vdi_vehicle_state.keys():
                 # state in gloabal frame
-                npc_past_state = self._map.past_record_npc_vehicle_state[npc_id] # x,y,heading in global frame
-                vector_past_vehicle_state[npc_id] = geometry.vectorize_point_list(npc_past_state, has_heading=True)
+                vdi_past_state = self._map.past_record_vdi_vehicle_state[vdi_id] # x,y,heading in global frame
+                vector_past_vehicle_state[vdi_id] = geometry.vectorize_point_list(vdi_past_state, has_heading=True)
                 # state in ego frame
-                past_location, past_heading = get_location(self._map.past_record_npc_vehicle_state[npc_id]), get_heading(self._map.past_record_npc_vehicle_state[npc_id])
+                past_location, past_heading = get_location(self._map.past_record_vdi_vehicle_state[vdi_id]), get_heading(self._map.past_record_vdi_vehicle_state[vdi_id])
                 past_location_ego_frame, past_heading_ego_frame = geometry.localize_transform_list(ego_state_dict['loc'], ego_state_dict['heading'], past_location, past_heading)
                 vector_location_ego_frame = geometry.vectorize_point_list(past_location_ego_frame, has_heading=False)
-                vector_past_vehicle_state_ego_frame[npc_id] = [vector_location_ego_frame[i] + [past_heading_ego_frame[i+1]] for i in range(len(vector_location_ego_frame))]
-            elif npc_id in self._map.past_react_npc_vehicle_state.keys():
+                vector_past_vehicle_state_ego_frame[vdi_id] = [vector_location_ego_frame[i] + [past_heading_ego_frame[i+1]] for i in range(len(vector_location_ego_frame))]
+            elif vdi_id in self._map.past_react_vdi_vehicle_state.keys():
                 # state in gloabal frame
-                npc_past_state = self._map.past_react_npc_vehicle_state[npc_id] # x,y,heading in global frame
-                vector_past_vehicle_state[npc_id] = geometry.vectorize_point_list(npc_past_state, has_heading=True)
+                vdi_past_state = self._map.past_react_vdi_vehicle_state[vdi_id] # x,y,heading in global frame
+                vector_past_vehicle_state[vdi_id] = geometry.vectorize_point_list(vdi_past_state, has_heading=True)
                 # state in ego frame
-                past_location, past_heading = get_location(self._map.past_react_npc_vehicle_state[npc_id]), get_heading(self._map.past_react_npc_vehicle_state[npc_id])
+                past_location, past_heading = get_location(self._map.past_react_vdi_vehicle_state[vdi_id]), get_heading(self._map.past_react_vdi_vehicle_state[vdi_id])
                 past_location_ego_frame, past_heading_ego_frame = geometry.localize_transform_list(ego_state_dict['loc'], ego_state_dict['heading'], past_location, past_heading)
                 vector_location_ego_frame = geometry.vectorize_point_list(past_location_ego_frame, has_heading=False)
-                vector_past_vehicle_state_ego_frame[npc_id] = [vector_location_ego_frame[i] + [past_heading_ego_frame[i+1]] for i in range(len(vector_location_ego_frame))]
+                vector_past_vehicle_state_ego_frame[vdi_id] = [vector_location_ego_frame[i] + [past_heading_ego_frame[i+1]] for i in range(len(vector_location_ego_frame))]
         surrounding_id_dict = {ego_id: surrounding_id_list}
                 
 
@@ -484,7 +484,7 @@ class Observation:
         self.observation_dict['current_speed'] = self.ego_current_speed  # 1-D
         self.observation_dict['ego_next_loc'] = self.ego_next_loc        # 2-D
 
-        # Observations - others state
+        # Observations - vpis state
         self.observation_dict['interaction_vehicles_observation'] = self.interaction_vehicles_observation  # 35-D
 
         # Observations - vector state
@@ -547,21 +547,21 @@ class Observation:
     #         ego_state_dict['speed'] = math.sqrt(ego_state._current_state.vx ** 2 + ego_state._current_state.vy ** 2)
     #         ego_state_dict['heading'] = ego_state._current_state.psi_rad
 
-    #         # get others' vector(2s) (xy_start, xy_end, attributre, id)
-    #         other_vehicles_state_dict = dict()
-    #         for other_ego_id, other_ego_state in self._ego_vehicles_dict.items():
-    #             if other_ego_id == ego_id:
+    #         # get vpis' vector(2s) (xy_start, xy_end, attributre, id)
+    #         vpi_vehicles_state_dict = dict()
+    #         for vpi_ego_id, vpi_ego_state in self._ego_vehicles_dict.items():
+    #             if vpi_ego_id == ego_id:
     #                 continue
     #             else:
-    #                 other_vehicles_state_dict[other_ego_id] = dict()
-    #                 other_vehicles_state_dict[other_ego_id]['polygon'] = self._map.ego_polygon_dict[other_ego_id]
-    #                 other_vehicles_state_dict[other_ego_id]['loc'] = [other_ego_state._current_state.x, other_ego_state._current_state.y]
-    #                 other_vehicles_state_dict[other_ego_id]['speed'] = math.sqrt(other_ego_state._current_state.vx ** 2 + other_ego_state._current_state.vy ** 2)
-    #                 other_vehicles_state_dict[other_ego_id]['heading'] = other_ego_state._current_state.psi_rad
-    #         for other_npc_id, other_npc_polygon in self._map.other_vehicle_polygon.items():
-    #             other_vehicles_state_dict[other_npc_id] = dict()
-    #             other_npc_motion_state = self._map.other_vehicle_motion_state[other_npc_id]
-    #             other_vehicles_state_dict[other_npc_id]['loc'] = [other_npc_motion_state.x, other_npc_motion_state.y]
-    #             other_vehicles_state_dict[other_npc_id]['speed'] = math.sqrt(other_npc_motion_state.vx ** 2 + other_npc_motion_state.vy ** 2)
-    #             other_vehicles_state_dict[other_npc_id]['heading'] = other_npc_motion_state.psi_rad
-    #             other_vehicles_state_dict[other_npc_id]['polygon'] = other_npc_polygon
+    #                 vpi_vehicles_state_dict[vpi_ego_id] = dict()
+    #                 vpi_vehicles_state_dict[vpi_ego_id]['polygon'] = self._map.ego_polygon_dict[vpi_ego_id]
+    #                 vpi_vehicles_state_dict[vpi_ego_id]['loc'] = [vpi_ego_state._current_state.x, vpi_ego_state._current_state.y]
+    #                 vpi_vehicles_state_dict[vpi_ego_id]['speed'] = math.sqrt(vpi_ego_state._current_state.vx ** 2 + vpi_ego_state._current_state.vy ** 2)
+    #                 vpi_vehicles_state_dict[vpi_ego_id]['heading'] = vpi_ego_state._current_state.psi_rad
+    #         for vpi_vdi_id, vpi_vdi_polygon in self._map.vpi_vehicle_polygon.items():
+    #             vpi_vehicles_state_dict[vpi_vdi_id] = dict()
+    #             vpi_vdi_motion_state = self._map.vpi_vehicle_motion_state[vpi_vdi_id]
+    #             vpi_vehicles_state_dict[vpi_vdi_id]['loc'] = [vpi_vdi_motion_state.x, vpi_vdi_motion_state.y]
+    #             vpi_vehicles_state_dict[vpi_vdi_id]['speed'] = math.sqrt(vpi_vdi_motion_state.vx ** 2 + vpi_vdi_motion_state.vy ** 2)
+    #             vpi_vehicles_state_dict[vpi_vdi_id]['heading'] = vpi_vdi_motion_state.psi_rad
+    #             vpi_vehicles_state_dict[vpi_vdi_id]['polygon'] = vpi_vdi_polygon

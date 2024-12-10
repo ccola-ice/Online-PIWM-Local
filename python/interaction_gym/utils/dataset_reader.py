@@ -130,7 +130,7 @@ def read_pedestrian(filename):
 def read_trajectory(filename):
     with open(filename, 'rb') as f:
         trajectory_data = pickle.load(f) ## encoding='latin1')
-        vehicles_trajectory_data = trajectory_data['others_track']
+        vehicles_trajectory_data = trajectory_data['vpis_track']    ##### others_track
 
         track_dict = dict()
         track_id = None

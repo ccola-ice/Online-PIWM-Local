@@ -27,51 +27,51 @@ class Interaction(embodied.Env):
           'ego_prediction': embodied.Space(np.float64, (self._args['predict_horizen'], 2)),
           # 'ego_map': embodied.Space(np.float64, shape),
       }
-      # plus npc observation space
-      for i in range(self._args['npc_num']):
-        obs_space[f'npc_{i+1}'] = embodied.Space(np.float64, (19, 5))
-        obs_space[f'npc_{i+1}_prediction'] = embodied.Space(np.float64, (self._args['predict_horizen'], 2))
-        # obs_space[f'npc_{i+1}_map'] = embodied.Space(np.float64, shape)
+      # plus vdi observation space
+      for i in range(self._args['vdi_num']):
+        obs_space[f'vdi_{i+1}'] = embodied.Space(np.float64, (19, 5))
+        obs_space[f'vdi_{i+1}_prediction'] = embodied.Space(np.float64, (self._args['predict_horizen'], 2))
+        # obs_space[f'vdi_{i+1}_map'] = embodied.Space(np.float64, shape)
       obs_space.update({
-                        'id_npc': embodied.Space(np.int32, (self._args['npc_num'])),
-                        'mask_npc': embodied.Space(np.int32, (self._args['npc_num'])),
-                        'should_init_npc': embodied.Space(np.int32, (self._args['npc_num'])),
+                        'id_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
+                        'mask_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
+                        'should_init_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
                         })
-      # plus other(npc with no interaction / is too away from ego) observation space
-      for i in range(self._args['other_num']):
-        obs_space[f'other_{i+1}'] = embodied.Space(np.float64, (19, 5))
+      # plus vpi(vdi with no interaction / is too away from ego) observation space
+      for i in range(self._args['vpi_num']):
+        obs_space[f'vpi_{i+1}'] = embodied.Space(np.float64, (19, 5))
       obs_space.update({
-                        'mask_other': embodied.Space(np.int32, (self._args['other_num'])),
-                        'should_init_other': embodied.Space(np.int32, (self._args['other_num'])),
+                        'mask_vpi': embodied.Space(np.int32, (self._args['vpi_num'])),
+                        'should_init_vpi': embodied.Space(np.int32, (self._args['vpi_num'])),
                         })
       
     # for PIM with only branch structure network, we need to recon every vehicle's state
     elif self._task == 'branch':
       obs_space = {'ego': embodied.Space(np.float64, (19, 5))}
-      # plus npc observation space
-      for i in range(self._args['npc_num']):
-        obs_space[f'npc_{i+1}'] = embodied.Space(np.float64, (19, 5))
+      # plus vdi observation space
+      for i in range(self._args['vdi_num']):
+        obs_space[f'vdi_{i+1}'] = embodied.Space(np.float64, (19, 5))
       obs_space.update({
-                        'id_npc': embodied.Space(np.int32, (self._args['npc_num'])),
-                        'mask_npc': embodied.Space(np.int32, (self._args['npc_num'])),
-                        'should_init_npc': embodied.Space(np.int32, (self._args['npc_num'])),
+                        'id_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
+                        'mask_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
+                        'should_init_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
                         })
-      # plus other(npc with no interaction / is too away from ego) observation space
-      for i in range(self._args['other_num']):
-        obs_space[f'other_{i+1}'] = embodied.Space(np.float64, (19, 5))
+      # plus vpi(vdi with no interaction / is too away from ego) observation space
+      for i in range(self._args['vpi_num']):
+        obs_space[f'vpi_{i+1}'] = embodied.Space(np.float64, (19, 5))
       obs_space.update({
-                        'mask_other': embodied.Space(np.int32, (self._args['other_num'])),
-                        'should_init_other': embodied.Space(np.int32, (self._args['other_num'])),
+                        'mask_vpi': embodied.Space(np.int32, (self._args['vpi_num'])),
+                        'should_init_vpi': embodied.Space(np.int32, (self._args['vpi_num'])),
                         })
 
     # for reconstraction decode target, we treat all vehicles as one whole state
     elif self._task == 'recon':
       # different state sizes
       ego_state_size = (19, 5)
-      npc_state_size = (19, 5)
-      other_state_size = (19, 5)
+      vdi_state_size = (19, 5)
+      vpi_state_size = (19, 5)
       # full state size
-      full_state_size = np.prod(ego_state_size) + np.prod(npc_state_size) * self._args['npc_num'] + np.prod(other_state_size) * self._args['other_num'] 
+      full_state_size = np.prod(ego_state_size) + np.prod(vdi_state_size) * self._args['vdi_num'] + np.prod(vpi_state_size) * self._args['vpi_num'] 
       # ego observation space
       obs_space = {
           'state': embodied.Space(np.float64, (int(full_state_size))),
@@ -84,7 +84,7 @@ class Interaction(embodied.Env):
                       'is_last': embodied.Space(bool),
                       'is_terminal': embodied.Space(bool),
     })
-    # plus other useful statistics observation space
+    # plus vpi useful statistics observation space
     obs_space.update({
                       'sta_speed': embodied.Space(np.float32),
                       'sta_collision': embodied.Space(np.int32),
@@ -119,53 +119,53 @@ class Interaction(embodied.Env):
           'ego': state['ego'],
           # 'ego_map': state['ego_map'],
           }
-        # npc obs
-        for i in range(self._args['npc_num']):
-          obs.update({f'npc_{i+1}': state[f'npc_{i+1}']})
-          # obs.update({f'npc_{i+1}_map': state[f'npc_{i+1}']})
+        # vdi obs
+        for i in range(self._args['vdi_num']):
+          obs.update({f'vdi_{i+1}': state[f'vdi_{i+1}']})
+          # obs.update({f'vdi_{i+1}_map': state[f'vdi_{i+1}']})
         obs.update({
-                    'id_npc': state['id_npc'],
-                    'mask_npc': state['mask_npc'],
-                    'should_init_npc': state['should_init_npc'],
+                    'id_vdi': state['id_vdi'],
+                    'mask_vdi': state['mask_vdi'],
+                    'should_init_vdi': state['should_init_vdi'],
                     })
-        # other obs
-        for i in range(self._args['other_num']):
-          obs.update({f'other_{i+1}': state[f'other_{i+1}']})
+        # vpi obs
+        for i in range(self._args['vpi_num']):
+          obs.update({f'vpi_{i+1}': state[f'vpi_{i+1}']})
         obs.update({
-                    'mask_other': state['mask_other'],
-                    'should_init_other': state['should_init_other'],
+                    'mask_vpi': state['mask_vpi'],
+                    'should_init_vpi': state['should_init_vpi'],
                     })
         
       # branch decode target, separate vehicle state branch
       elif self._task == 'branch':
         # ego obs
         obs = {'ego': state['ego']}
-        # npc obs
-        for i in range(self._args['npc_num']):
-          obs.update({f'npc_{i+1}': state[f'npc_{i+1}']})
+        # vdi obs
+        for i in range(self._args['vdi_num']):
+          obs.update({f'vdi_{i+1}': state[f'vdi_{i+1}']})
         obs.update({
-                    'id_npc': state['id_npc'],
-                    'mask_npc': state['mask_npc'],
-                    'should_init_npc': state['should_init_npc'],
+                    'id_vdi': state['id_vdi'],
+                    'mask_vdi': state['mask_vdi'],
+                    'should_init_vdi': state['should_init_vdi'],
                     })
-        for i in range(self._args['other_num']):
-          obs.update({f'other_{i+1}': state[f'other_{i+1}']})
+        for i in range(self._args['vpi_num']):
+          obs.update({f'vpi_{i+1}': state[f'vpi_{i+1}']})
         obs.update({
-                    'mask_other': state['mask_other'],
-                    'should_init_other': state['should_init_other'],
+                    'mask_vpi': state['mask_vpi'],
+                    'should_init_vpi': state['should_init_vpi'],
                     })
 
       # recon decode target, concat all vehicles states as one(by their order, from cloest to farest, zero padding)
       elif self._task == 'recon':
-        order = state['index_npc'] + state['index_other']
-        # for zero-padding npc and other
-        for i in range(self._args['npc_num']):
-          if f'npc_{i+1}' not in order:
-            order.append(f'npc_{i+1}')
-        for i in range(self._args['other_num']):
-          if f'other_{i+1}' not in order:
-            order.append(f'other_{i+1}')
-        # concat ego, npcs and others features, npcs and others features are ordered by distance
+        order = state['index_vdi'] + state['index_vpi']
+        # for zero-padding vdi and vpi
+        for i in range(self._args['vdi_num']):
+          if f'vdi_{i+1}' not in order:
+            order.append(f'vdi_{i+1}')
+        for i in range(self._args['vpi_num']):
+          if f'vpi_{i+1}' not in order:
+            order.append(f'vpi_{i+1}')
+        # concat ego, vdis and vpis features, vdis and vpis features are ordered by distance
         value = state['ego'].reshape((-1))
         for key_order in order:
           value = np.concatenate([value, state[key_order].reshape(-1)], axis = 0)
@@ -207,53 +207,53 @@ class Interaction(embodied.Env):
       obs = {'ego': state['ego'],
             # 'ego_map': state['ego_map'],
             }
-      # npc obs
-      for i in range(self._args['npc_num']):
-        obs.update({f'npc_{i+1}': state[f'npc_{i+1}']})
-        # obs.update({f'npc_{i+1}_map': state[f'npc_{i+1}']})
+      # vdi obs
+      for i in range(self._args['vdi_num']):
+        obs.update({f'vdi_{i+1}': state[f'vdi_{i+1}']})
+        # obs.update({f'vdi_{i+1}_map': state[f'vdi_{i+1}']})
       obs.update({
-                  'id_npc': state['id_npc'],
-                  'mask_npc': state['mask_npc'],
-                  'should_init_npc': state['should_init_npc'],
+                  'id_vdi': state['id_vdi'],
+                  'mask_vdi': state['mask_vdi'],
+                  'should_init_vdi': state['should_init_vdi'],
                   })
-      # other obs
-      for i in range(self._args['other_num']):
-        obs.update({f'other_{i+1}': state[f'other_{i+1}']})
+      # vpi obs
+      for i in range(self._args['vpi_num']):
+        obs.update({f'vpi_{i+1}': state[f'vpi_{i+1}']})
       obs.update({
-                  'mask_other': state['mask_other'],
-                  'should_init_other': state['should_init_other'],
+                  'mask_vpi': state['mask_vpi'],
+                  'should_init_vpi': state['should_init_vpi'],
                   })
       
     # branch decode target, separate vehicle state branch
     elif self._task == 'branch':
       # ego obs
       obs = {'ego': state['ego']}
-      # npc obs
-      for i in range(self._args['npc_num']):
-        obs.update({f'npc_{i+1}': state[f'npc_{i+1}']})
+      # vdi obs
+      for i in range(self._args['vdi_num']):
+        obs.update({f'vdi_{i+1}': state[f'vdi_{i+1}']})
       obs.update({
-                  'id_npc': state['id_npc'],
-                  'mask_npc': state['mask_npc'],
-                  'should_init_npc': state['should_init_npc'],
+                  'id_vdi': state['id_vdi'],
+                  'mask_vdi': state['mask_vdi'],
+                  'should_init_vdi': state['should_init_vdi'],
                   })
-      for i in range(self._args['other_num']):
-        obs.update({f'other_{i+1}': state[f'other_{i+1}']})
+      for i in range(self._args['vpi_num']):
+        obs.update({f'vpi_{i+1}': state[f'vpi_{i+1}']})
       obs.update({
-                  'mask_other': state['mask_other'],
-                  'should_init_other': state['should_init_other'],
+                  'mask_vpi': state['mask_vpi'],
+                  'should_init_vpi': state['should_init_vpi'],
                   })
       
     # recon decode target, concat all vehicles states as one(by their order, from cloest to farest, zero padding)
     elif self._task == 'recon':
-      order = state['index_npc'] + state['index_other']
-      # for zero-padding npc and other
-      for i in range(self._args['npc_num']):
-        if f'npc_{i+1}' not in order:
-          order.append(f'npc_{i+1}')
-      for i in range(self._args['other_num']):
-        if f'other_{i+1}' not in order:
-          order.append(f'other_{i+1}')
-      # concat ego and npcs features, npc feature is ordered by distance
+      order = state['index_vdi'] + state['index_vpi']
+      # for zero-padding vdi and vpi
+      for i in range(self._args['vdi_num']):
+        if f'vdi_{i+1}' not in order:
+          order.append(f'vdi_{i+1}')
+      for i in range(self._args['vpi_num']):
+        if f'vpi_{i+1}' not in order:
+          order.append(f'vpi_{i+1}')
+      # concat ego and vdis features, vdi feature is ordered by distance
       value = state['ego'].reshape((-1))
       for key_order in order:
         value = np.concatenate([value, state[key_order].reshape(-1)], axis=0)

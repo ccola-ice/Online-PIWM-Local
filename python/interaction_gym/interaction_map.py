@@ -41,50 +41,50 @@ class InteractionMap:
         
         # initialize vehicles' id list
         self._ego_id_list = list()
-        self._react_npc_id_list = list()
-        self._record_npc_id_list = list()
+        self._react_vdi_id_list = list()
+        self._record_vdi_id_list = list()
 
         # tracks which the vehicles will follow
-        self._npc_type = settings['npc_type']
+        self._vdi_type = settings['vdi_type']
         # self._load_mode = settings['load_mode']
         self.track_dict = dict()
         self.ego_track_dict = dict()
-        self._record_npc_track_dict = dict()
+        self._record_vdi_track_dict = dict()
         self._pedestrian_dict = dict()
 
         # polygon used for collison detection and distance calculation
         self.ego_polygon_dict = dict()
-        self.react_npc_polygon_dict = dict()
-        self.record_npc_polygon_dict = dict()
+        self.react_vdi_polygon_dict = dict()
+        self.record_vdi_polygon_dict = dict()
         self.ghost_polygon_dict = dict()
         
         # (current) motion states
         self.ego_motion_state_dict = dict()
         self.react_motion_state_dict = dict()
-        self.record_npc_motion_state_dict = dict()
+        self.record_vdi_motion_state_dict = dict()
         self.ghost_motion_state_dict = dict()
 
         # record past location for vector representation
         self.past_ego_vehicle_state = defaultdict(list)
-        self.past_react_npc_vehicle_state = defaultdict(list)
-        self.past_record_npc_vehicle_state = defaultdict(list)
+        self.past_react_vdi_vehicle_state = defaultdict(list)
+        self.past_record_vdi_vehicle_state = defaultdict(list)
 
-        # including ego and react npc
+        # including ego and react vdi
         self.controlled_vehicle_start_end_state_dict = dict()
         # shapes
         self.vehicle_shape = dict()
                 
     def _reset_vehicle_dict(self, ego_id_list, ego_start_timestamp=None):
         self.controlled_vehicle_start_end_state_dict['ego'] = dict()
-        self.controlled_vehicle_start_end_state_dict['npc'] = dict()
+        self.controlled_vehicle_start_end_state_dict['vdi'] = dict()
         # set ego first
         self._ego_id_list = ego_id_list
         self.ego_track_dict = {key:value for key,value in self.track_dict.items() if key in self._ego_id_list}
-        # then npcs
-        if self._npc_type == 'react':
-            self._react_npc_id_list = [30]
-            self._record_npc_id_list = []
-            # controlled vehicle includes ego and react npc, we set their start and end timestamp and state manully in react npc scen
+        # then vdis
+        if self._vdi_type == 'react':
+            self._react_vdi_id_list = [30]
+            self._record_vdi_id_list = []
+            # controlled vehicle includes ego and react vdi, we set their start and end timestamp and state manully in react vdi scen
             for vehicle_id in self._ego_id_list:
                 ego_info = self.track_dict[vehicle_id]
                 length, width = ego_info.length, ego_info.width
@@ -93,16 +93,16 @@ class InteractionMap:
                 ego_start_timestamp_ms = ego_info.time_stamp_ms_first + ego_start_time_delay
                 ego_end_timestamp_ms = ego_start_timestamp_ms + 100 * self._max_steps - 100 if self._max_steps else ego_info.time_stamp_ms_last - ego_end_time_front
                 self.controlled_vehicle_start_end_state_dict['ego'][vehicle_id] = [ego_start_timestamp_ms, ego_end_timestamp_ms, length, width, ego_info.motion_states[ego_start_timestamp_ms], ego_info.motion_states[ego_end_timestamp_ms]]
-            for vehicle_id in self._react_npc_id_list:
-                npc_info = self.track_dict[vehicle_id]
-                length, width = npc_info.length, npc_info.width
+            for vehicle_id in self._react_vdi_id_list:
+                vdi_info = self.track_dict[vehicle_id]
+                length, width = vdi_info.length, vdi_info.width
                 # TODO: start motion state need to be modified
-                npc_start_time_delay = 10000
-                npc_start_timestamp_ms = npc_info.time_stamp_ms_first + npc_start_time_delay
-                npc_end_timestamp_ms = npc_start_timestamp_ms + 100 * self._max_steps - 100 if self._max_steps else npc_info.time_stamp_ms_last
-                self.controlled_vehicle_start_end_state_dict['npc'][vehicle_id] = [npc_start_timestamp_ms, npc_end_timestamp_ms, length, width, npc_info.motion_states[npc_start_timestamp_ms], npc_info.motion_states[npc_end_timestamp_ms]]
-        elif self._npc_type == 'record':
-            self._record_npc_id_list = list(set(self.track_dict.keys()) - set(self._ego_id_list))
+                vdi_start_time_delay = 10000
+                vdi_start_timestamp_ms = vdi_info.time_stamp_ms_first + vdi_start_time_delay
+                vdi_end_timestamp_ms = vdi_start_timestamp_ms + 100 * self._max_steps - 100 if self._max_steps else vdi_info.time_stamp_ms_last
+                self.controlled_vehicle_start_end_state_dict['vdi'][vehicle_id] = [vdi_start_timestamp_ms, vdi_end_timestamp_ms, length, width, vdi_info.motion_states[vdi_start_timestamp_ms], vdi_info.motion_states[vdi_end_timestamp_ms]]
+        elif self._vdi_type == 'record':
+            self._record_vdi_id_list = list(set(self.track_dict.keys()) - set(self._ego_id_list))
             for ego_id in self._ego_id_list:
                 ego_info = self.track_dict[ego_id]
                 length, width = ego_info.length, ego_info.width
@@ -112,28 +112,28 @@ class InteractionMap:
                     ego_timestamp_ms_first, ego_timestamp_ms_last = ego_info.time_stamp_ms_first, ego_info.time_stamp_ms_last
                 self.controlled_vehicle_start_end_state_dict['ego'][ego_id] = [ego_timestamp_ms_first, ego_timestamp_ms_last, length, width, ego_info.motion_states[ego_timestamp_ms_first], ego_info.motion_states[ego_timestamp_ms_last]]
         else:
-            print('Please check if npc type setting is right')
+            print('Please check if vdi type setting is right')
 
     def reset(self, track_dict, ego_id_list, ego_start_timestamp=None):
         # clear
         self.ego_track_dict.clear()
-        self._record_npc_track_dict.clear()
+        self._record_vdi_track_dict.clear()
         self.track_dict.clear()
         # self._pedestrian_dict.clear()
 
         self.ego_polygon_dict.clear()
-        self.react_npc_polygon_dict.clear()
-        self.record_npc_polygon_dict.clear()
+        self.react_vdi_polygon_dict.clear()
+        self.record_vdi_polygon_dict.clear()
         self.ghost_polygon_dict.clear()
 
         self.ego_motion_state_dict.clear()
         self.react_motion_state_dict.clear()
-        self.record_npc_motion_state_dict.clear()
+        self.record_vdi_motion_state_dict.clear()
         self.ghost_motion_state_dict.clear()
 
         self.past_ego_vehicle_state.clear()
-        self.past_react_npc_vehicle_state.clear()
-        self.past_record_npc_vehicle_state.clear()
+        self.past_react_vdi_vehicle_state.clear()
+        self.past_record_vdi_vehicle_state.clear()
 
         self.controlled_vehicle_start_end_state_dict.clear()
         self.vehicle_shape.clear()
@@ -177,7 +177,7 @@ class InteractionMap:
         return centerline_list
 
     # update all env parameters like vehicles states etc and history motion states for vector representation
-    # for controlled vehicles like ego and react npc, their current states are calculated by vehicle dynamic model;
+    # for controlled vehicles like ego and react vdi, their current states are calculated by vehicle dynamic model;
     # for uncontrolled vehicles, their current states are read from track file
     def update_param(self, timestamp, controlled_state_dict, time_horizen=20, ghost_vis=True):
 
@@ -204,16 +204,16 @@ class InteractionMap:
             ego_polyPoint3d = [Point3d(getId(), p[0], p[1], 0, getAttributes()) for p in ego_polypoint_np]
             poly1 = Polygon2d(getId(), [ego_polyPoint3d[0], ego_polyPoint3d[1], ego_polyPoint3d[2], ego_polyPoint3d[3]], getAttributes())
 
-            other_polypoint_np = poly2_corner_np
-            other_polyPoint3d = [Point3d(getId(), p[0], p[1], 0, getAttributes()) for p in other_polypoint_np]
-            poly2 = Polygon2d(getId(), [other_polyPoint3d[0], other_polyPoint3d[1], other_polyPoint3d[2], other_polyPoint3d[3]], getAttributes())
+            vpi_polypoint_np = poly2_corner_np
+            vpi_polyPoint3d = [Point3d(getId(), p[0], p[1], 0, getAttributes()) for p in vpi_polypoint_np]
+            poly2 = Polygon2d(getId(), [vpi_polyPoint3d[0], vpi_polyPoint3d[1], vpi_polyPoint3d[2], vpi_polyPoint3d[3]], getAttributes())
             return intersects2d(poly1, poly2)
             
         # controlled vehicles shapes
         for ego_id, ego_info in self.controlled_vehicle_start_end_state_dict['ego'].items():
             if ego_id not in self.vehicle_shape.keys():
                 self.vehicle_shape[ego_id] = (ego_info[2], ego_info[3]) # length and width
-        for vehicle_id, vehicle_info in self.controlled_vehicle_start_end_state_dict['npc'].items():
+        for vehicle_id, vehicle_info in self.controlled_vehicle_start_end_state_dict['vdi'].items():
             if vehicle_id not in self.vehicle_shape.keys():
                 self.vehicle_shape[vehicle_id] = (vehicle_info[2], vehicle_info[3]) # length and width
 
@@ -222,29 +222,29 @@ class InteractionMap:
             length, width, vehicle_ms = self.vehicle_shape[vehicle_id][0], self.vehicle_shape[vehicle_id][1], controlled_state_dict[vehicle_id]
             self.ego_polygon_dict[vehicle_id] = polygon_xy_from_motionstate(vehicle_ms, length, width)
             self.ego_motion_state_dict[vehicle_id] = vehicle_ms
-        for vehicle_id in self.controlled_vehicle_start_end_state_dict['npc'].keys():
+        for vehicle_id in self.controlled_vehicle_start_end_state_dict['vdi'].keys():
             length, width, vehicle_ms = self.vehicle_shape[vehicle_id][0], self.vehicle_shape[vehicle_id][1], controlled_state_dict[vehicle_id]
-            self.react_npc_polygon_dict[vehicle_id] = polygon_xy_from_motionstate(vehicle_ms, length, width)
+            self.react_vdi_polygon_dict[vehicle_id] = polygon_xy_from_motionstate(vehicle_ms, length, width)
             self.react_motion_state_dict[vehicle_id] = vehicle_ms
         # update uncontrolled vehicles(record) polygons and motion states
-        for vehicle_id in self._record_npc_id_list:
+        for vehicle_id in self._record_vdi_id_list:
             vehicle_track = self.track_dict[vehicle_id]
             if vehicle_track.time_stamp_ms_first <= timestamp <= vehicle_track.time_stamp_ms_last:
                 length, width, vehicle_ms = vehicle_track.length, vehicle_track.width, vehicle_track.motion_states[timestamp]
                 polygon = polygon_xy_from_motionstate(vehicle_ms, length, width)
-                if vehicle_id not in self.record_npc_polygon_dict.keys(): # check if it starts in conflict position with ego
+                if vehicle_id not in self.record_vdi_polygon_dict.keys(): # check if it starts in conflict position with ego
                     conflict_with_ego = []
                     for ego_id in self._ego_id_list:
                         conflict = polygon_intersect(polygon, self.ego_polygon_dict[ego_id])
                         conflict_with_ego.append(conflict)
                     if any(conflict_with_ego):
                         continue
-                self.record_npc_polygon_dict[vehicle_id] = polygon
-                self.record_npc_motion_state_dict[vehicle_id] = vehicle_ms
+                self.record_vdi_polygon_dict[vehicle_id] = polygon
+                self.record_vdi_motion_state_dict[vehicle_id] = vehicle_ms
             else:
-                if vehicle_id in self.record_npc_polygon_dict.keys():
-                    self.record_npc_polygon_dict.pop(vehicle_id)
-                    self.record_npc_motion_state_dict.pop(vehicle_id)
+                if vehicle_id in self.record_vdi_polygon_dict.keys():
+                    self.record_vdi_polygon_dict.pop(vehicle_id)
+                    self.record_vdi_motion_state_dict.pop(vehicle_id)
         # update ghost (record ego) polygons and motion states
         if ghost_vis:
             for ghost_id, ghost_track in self.ego_track_dict.items():
@@ -266,22 +266,22 @@ class InteractionMap:
             elif len(self.past_ego_vehicle_state[ego_id]) < time_horizen: # NOTE: this only happened once when the vehicle is first added!
                 while len(self.past_ego_vehicle_state[ego_id]) < time_horizen:
                     self.past_ego_vehicle_state[ego_id].append(self.past_ego_vehicle_state[ego_id][0])
-        for react_id in self._react_npc_id_list:
-            react_npc_x, react_npc_y, react_npc_heading = controlled_state_dict[react_id].x, controlled_state_dict[react_id].y, controlled_state_dict[react_id].psi_rad
-            self.past_react_npc_vehicle_state[react_id].append([react_npc_x, react_npc_y, react_npc_heading])
-            if len(self.past_react_npc_vehicle_state[react_id]) > time_horizen:
-                self.past_react_npc_vehicle_state[react_id] = self.past_react_npc_vehicle_state[react_id][-time_horizen:]
-            elif len(self.past_react_npc_vehicle_state[react_id]) < time_horizen:
-                while len(self.past_react_npc_vehicle_state[react_id]) < time_horizen: # NOTE: this only happened once when the vehicle is first added!
-                    self.past_react_npc_vehicle_state[react_id].append(self.past_react_npc_vehicle_state[react_id][0])
-        for record_id in self.record_npc_motion_state_dict.keys():
-            record_npc_x, record_npc_y, record_npc_heading = self.record_npc_motion_state_dict[record_id].x, self.record_npc_motion_state_dict[record_id].y, self.record_npc_motion_state_dict[record_id].psi_rad
-            self.past_record_npc_vehicle_state[record_id].append([record_npc_x, record_npc_y, record_npc_heading])
-            if len(self.past_record_npc_vehicle_state[record_id]) > time_horizen:
-                self.past_record_npc_vehicle_state[record_id] = self.past_record_npc_vehicle_state[record_id][-time_horizen:]
-            elif len(self.past_record_npc_vehicle_state[record_id]) < time_horizen: # NOTE: this only happened once when the vehicle is first added!
-                while len(self.past_record_npc_vehicle_state[record_id]) < time_horizen:
-                    self.past_record_npc_vehicle_state[record_id].append(self.past_record_npc_vehicle_state[record_id][0])
+        for react_id in self._react_vdi_id_list:
+            react_vdi_x, react_vdi_y, react_vdi_heading = controlled_state_dict[react_id].x, controlled_state_dict[react_id].y, controlled_state_dict[react_id].psi_rad
+            self.past_react_vdi_vehicle_state[react_id].append([react_vdi_x, react_vdi_y, react_vdi_heading])
+            if len(self.past_react_vdi_vehicle_state[react_id]) > time_horizen:
+                self.past_react_vdi_vehicle_state[react_id] = self.past_react_vdi_vehicle_state[react_id][-time_horizen:]
+            elif len(self.past_react_vdi_vehicle_state[react_id]) < time_horizen:
+                while len(self.past_react_vdi_vehicle_state[react_id]) < time_horizen: # NOTE: this only happened once when the vehicle is first added!
+                    self.past_react_vdi_vehicle_state[react_id].append(self.past_react_vdi_vehicle_state[react_id][0])
+        for record_id in self.record_vdi_motion_state_dict.keys():
+            record_vdi_x, record_vdi_y, record_vdi_heading = self.record_vdi_motion_state_dict[record_id].x, self.record_vdi_motion_state_dict[record_id].y, self.record_vdi_motion_state_dict[record_id].psi_rad
+            self.past_record_vdi_vehicle_state[record_id].append([record_vdi_x, record_vdi_y, record_vdi_heading])
+            if len(self.past_record_vdi_vehicle_state[record_id]) > time_horizen:
+                self.past_record_vdi_vehicle_state[record_id] = self.past_record_vdi_vehicle_state[record_id][-time_horizen:]
+            elif len(self.past_record_vdi_vehicle_state[record_id]) < time_horizen: # NOTE: this only happened once when the vehicle is first added!
+                while len(self.past_record_vdi_vehicle_state[record_id]) < time_horizen:
+                    self.past_record_vdi_vehicle_state[record_id].append(self.past_record_vdi_vehicle_state[record_id][0])
 
         
     """ relate to Lane Vector Representation """ 

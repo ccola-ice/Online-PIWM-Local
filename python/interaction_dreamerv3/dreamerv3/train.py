@@ -32,31 +32,31 @@ def main(argv=None):
     config = yaml.safe_load(file)
   print("config1:",config) 
 
-  # 从configs.yaml文件中获取npc_num和other_num的值
-  npc_num = config['interaction_prediction']['env']['interaction']['npc_num']
-  other_num = config['interaction_prediction']['env']['interaction']['other_num']
+  # 从configs.yaml文件中获取vdi_num和vpi_num的值
+  vdi_num   = config['interaction_prediction']['env']['interaction']['vdi_num']
+  vpi_num = config['interaction_prediction']['env']['interaction']['vpi_num']
 
-  parsed, other = embodied.Flags(configs=['defaults']).parse_known(argv)
+  parsed, vpi = embodied.Flags(configs=['defaults']).parse_known(argv)
   config = embodied.Config(agt.Agent.configs['defaults'])
   for name in parsed.configs:
     config = config.update(agt.Agent.configs[name])
-  config = embodied.Flags(config).parse(other)
+  config = embodied.Flags(config).parse(vpi)
   # args contains items in 'run', logdir, and batch size info
   args = embodied.Config(
       **config.run, logdir=config.logdir, 
       batch_steps=config.batch_size * config.batch_length)
   
   print("config2:",config) 
-  print("npc_num",npc_num)
-  print("other_num",other_num)
+  print("vdi_num",vdi_num)
+  print("vpi_num",vpi_num)
 
   # 生成encoder的mlp_keys列表
   encoder_mlp_keys = ['ego'] + \
-      [f'npc_{i}' for i in range(1, npc_num + 1)] + \
-      [f'other_{i}' for i in range(1, other_num + 1)]
+      [f'vdi_{i}' for i in range(1, vdi_num + 1)] + \
+      [f'vpi_{i}' for i in range(1, vpi_num + 1)]
   # 生成decoder的mlp_keys列表
   decoder_mlp_keys = ['ego_prediction'] + \
-      [f'npc_{i}_prediction' for i in range(1, npc_num + 1)]
+      [f'vdi_{i}_prediction' for i in range(1, vdi_num + 1)]
   # 更新到config中
   config = config.update({
     'encoder': {'mlp_keys': encoder_mlp_keys},
@@ -80,7 +80,7 @@ def main(argv=None):
       elif args.replay_style == 'ep':
         replay = make_replay_ep(config, logdir / 'replay') # ep方式初始化replay_buffer
 
-      env = make_envs(config) ## 返回的env为：BatchEnv(len=1, obs_space={'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'npc_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'npc_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_npc': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_npc': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_npc': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'other_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'other_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'other_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'other_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'other_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'mask_other': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_other': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'reward': Space(dtype=float32, shape=(), low=-inf, high=inf), 'is_first': Space(dtype=bool, shape=(), low=False, high=True), 'is_last': Space(dtype=bool, shape=(), low=False, high=True), 'is_terminal': Space(dtype=bool, shape=(), low=False, high=True), 'sta_speed': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_collision': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_success': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_complet': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_gt_distance': Space(dtype=float32, shape=(1,), low=-inf, high=inf)}, act_space={'action': Space(dtype=float32, shape=(4,), low=0, high=1)})
+      env = make_envs(config) ## 返回的env为：BatchEnv(len=1, obs_space={'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'vpi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'mask_vpi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_vpi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'reward': Space(dtype=float32, shape=(), low=-inf, high=inf), 'is_first': Space(dtype=bool, shape=(), low=False, high=True), 'is_last': Space(dtype=bool, shape=(), low=False, high=True), 'is_terminal': Space(dtype=bool, shape=(), low=False, high=True), 'sta_speed': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_collision': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_success': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_complet': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_gt_distance': Space(dtype=float32, shape=(1,), low=-inf, high=inf)}, act_space={'action': Space(dtype=float32, shape=(4,), low=0, high=1)})
       cleanup.append(env) ## 将env加入cleanup列表
       agent = agt.Agent(env.obs_space, env.act_space, step, config) # 设置agent
       embodied.run.train(agent, env, replay, logger, args) # 开始训练
@@ -208,11 +208,11 @@ def make_replay_ep(
   length = config.batch_length # 50 by default
   size = config.replay_size // 10 if is_eval else config.replay_size # 默认 size = config.replay_size = 2000000 # 1e6/2e6 or 1e5/2e5 by default
   
-  npc_num = config.env.interaction.npc_num # 5 by default 5个vdi
-  other_num = config.env.interaction.other_num # 5 by default 5个vpi
+  vdi_num = config.env.interaction.vdi_num # 5 by default 5个vdi
+  vpi_num = config.env.interaction.vpi_num # 5 by default 5个vpi
   predict_horizen = config.env.interaction.predict_horizen # 20 means 2s in 10hz for prediction task
 
-  replay = embodied.replay.ReplayEp(directory, capacity=size, batch_size=config.batch_size, batch_length=length, npc_num=npc_num, other_num=other_num, predict_horizen=predict_horizen,
+  replay = embodied.replay.ReplayEp(directory, capacity=size, batch_size=config.batch_size, batch_length=length, vdi_num=vdi_num, vpi_num=vpi_num, predict_horizen=predict_horizen,
                                     ongoing=False, minlen=config.batch_length, maxlen=config.batch_length, prioritize_ends=True)
 
   return replay

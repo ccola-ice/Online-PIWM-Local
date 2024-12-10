@@ -28,20 +28,20 @@ class InteractionRender:
 
         # vehicle positions
         self._ego_state_dict = dict()
-        self._react_npc_state_dict = dict()
-        self._record_npc_state_dict = dict()
+        self._react_vdi_state_dict = dict()
+        self._record_vdi_state_dict = dict()
         self._ghost_state_dict = dict()
 
         # vehicle polygons positions
         self._ego_polygon_dict = dict()
-        self._react_npc_polygon_dict = dict()
-        self._record_npc_polygon_dict = dict()
+        self._react_vdi_polygon_dict = dict()
+        self._record_vdi_polygon_dict = dict()
         self._ghost_polygon_dict = dict()
 
         # vehicles patches
         self._ego_patches_dict = dict()
-        self._react_npc_patches_dict = dict()
-        self._record_npc_patches_dict = dict()
+        self._react_vdi_patches_dict = dict()
+        self._record_vdi_patches_dict = dict()
         self._ghost_patches_dict = dict()
         # lane patches
         self._future_route_patches_dict = dict()
@@ -55,8 +55,8 @@ class InteractionRender:
         self._vector_axes.clear()
 
         self._ego_patches_dict.clear()
-        self._react_npc_patches_dict.clear()
-        self._record_npc_patches_dict.clear()
+        self._react_vdi_patches_dict.clear()
+        self._record_vdi_patches_dict.clear()
         self._ghost_patches_dict.clear()
 
         self._future_route_patches_dict.clear()
@@ -88,14 +88,14 @@ class InteractionRender:
     def update_param(self, map):
         # state positions
         self._ego_state_dict = map.ego_motion_state_dict.copy()
-        self._react_npc_state_dict = map.react_motion_state_dict.copy()
-        self._record_npc_state_dict = map.record_npc_motion_state_dict.copy()
+        self._react_vdi_state_dict = map.react_motion_state_dict.copy()
+        self._record_vdi_state_dict = map.record_vdi_motion_state_dict.copy()
         self._ghost_state_dict = map.ghost_motion_state_dict.copy()
 
         # polygon postions
         self._ego_polygon_dict = map.ego_polygon_dict.copy()
-        self._react_npc_polygon_dict = map.react_npc_polygon_dict.copy()
-        self._record_npc_polygon_dict = map.record_npc_polygon_dict.copy()
+        self._react_vdi_polygon_dict = map.react_vdi_polygon_dict.copy()
+        self._record_vdi_polygon_dict = map.record_vdi_polygon_dict.copy()
         self._ghost_polygon_dict = map.ghost_polygon_dict.copy()
     
     def save_images(self, ego_id, current_time):
@@ -106,8 +106,8 @@ class InteractionRender:
         plt.ion()
         
         draw_controlled_vehicles(self._ego_state_dict, self._ego_polygon_dict, self._ego_patches_dict, self._text_dict, self._grid_axes, self._vector_axes)
-        draw_controlled_vehicles(self._react_npc_state_dict, self._react_npc_polygon_dict, self._react_npc_patches_dict, self._text_dict, self._grid_axes, self._vector_axes, surrounding_vehicle_id_list)
-        draw_uncontrolled_vehicle(self._record_npc_state_dict, self._record_npc_polygon_dict, self._record_npc_patches_dict, self._text_dict, self._grid_axes, self._vector_axes, surrounding_vehicle_id_list)
+        draw_controlled_vehicles(self._react_vdi_state_dict, self._react_vdi_polygon_dict, self._react_vdi_patches_dict, self._text_dict, self._grid_axes, self._vector_axes, surrounding_vehicle_id_list)
+        draw_uncontrolled_vehicle(self._record_vdi_state_dict, self._record_vdi_polygon_dict, self._record_vdi_patches_dict, self._text_dict, self._grid_axes, self._vector_axes, surrounding_vehicle_id_list)
         if ghost_vis:
             draw_ghost_vehicle(self._ghost_state_dict, self._ghost_polygon_dict, self._ghost_patches_dict, self._text_dict, self._grid_axes, render_as_ego = False)
 

@@ -227,26 +227,26 @@ def sat(rect1, rect2):
 
 
 
-def ego_other_distance_and_collision(ego_state_dict, other_state_dict):
+def ego_vpi_distance_and_collision(ego_state_dict, vpi_state_dict):
     # calculte the minmum distance between two polygon2d
     ego_polypoint_np = ego_state_dict['polygon']
     ego_polyPoint3d = [Point3d(getId(), p[0], p[1], 0, getAttributes()) for p in ego_polypoint_np]
     ego_poly = Polygon2d(getId(), [ego_polyPoint3d[0], ego_polyPoint3d[1], ego_polyPoint3d[2], ego_polyPoint3d[3]], getAttributes())
     
-    other_polypoint_np = other_state_dict['polygon']
-    other_polyPoint3d = [Point3d(getId(), p[0], p[1], 0, getAttributes()) for p in other_polypoint_np]
-    other_poly = Polygon2d(getId(), [other_polyPoint3d[0], other_polyPoint3d[1], other_polyPoint3d[2], other_polyPoint3d[3]], getAttributes())
+    vpi_polypoint_np = vpi_state_dict['polygon']
+    vpi_polyPoint3d = [Point3d(getId(), p[0], p[1], 0, getAttributes()) for p in vpi_polypoint_np]
+    vpi_poly = Polygon2d(getId(), [vpi_polyPoint3d[0], vpi_polyPoint3d[1], vpi_polyPoint3d[2], vpi_polyPoint3d[3]], getAttributes())
     
-    # a = intersects2d(ego_poly, other_poly)
-    # b = sat(ego_polypoint_np, other_polypoint_np)
+    # a = intersects2d(ego_poly, vpi_poly)
+    # b = sat(ego_polypoint_np, vpi_polypoint_np)
     # if a != b:
-    #     print(ego_polypoint_np, other_polypoint_np)
+    #     print(ego_polypoint_np, vpi_polypoint_np)
 
-    if intersects2d(ego_poly, other_poly):
-        # print('shared area:', area(ego_poly, other_poly))
+    if intersects2d(ego_poly, vpi_poly):
+        # print('shared area:', area(ego_poly, vpi_poly))
         return 0, True
     else:   
-        poly_distance = distance(ego_poly, other_poly)
+        poly_distance = distance(ego_poly, vpi_poly)
         return poly_distance, False
 
 

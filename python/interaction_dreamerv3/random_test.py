@@ -18,9 +18,9 @@ if __name__ == "__main__":
     parser.add_argument("control_steering", type=bool, default=False, help="Control both lon and lat motions", nargs='?')
     parser.add_argument("max_steps", type=int, default=None, help="max steps of one episode, None means orifinal max steps of the vehicle in xlm files", nargs='?')
     
-    parser.add_argument("npc_type", type=str, default='react', help="Default npc type (react or record)", nargs='?')
-    parser.add_argument("npc_num", type=int, default=5, help="Default considered npc num", nargs='?')
-    parser.add_argument("other_num", type=int, default=5, help="Default considered far away npc num", nargs='?')
+    parser.add_argument("vdi_type", type=str, default='react', help="Default vdi type (react or record)", nargs='?')
+    parser.add_argument("vdi_num", type=int, default=5, help="Default considered vdi num", nargs='?')
+    parser.add_argument("vpi_num", type=int, default=5, help="Default considered far away vdi num", nargs='?')
     parser.add_argument("route_type", type=str, default='ground_truth', help="Default route type (predict, ground_truth or centerline)", nargs='?')
 
     parser.add_argument("visualization", type=bool, default=True, help="Visulize or not", nargs='?')
@@ -42,13 +42,13 @@ if __name__ == "__main__":
     args.drive_as_record = False
     args.state_frame = 'ego'
     args.loader_type = 'prediction'
-    args.npc_type = 'record'
+    args.vdi_type = 'record'
     args.visualization = True
     args.route_visualization = True
     args.ghost_visualization = False
     args.eval = False
-    args.npc_num = 5
-    args.other_num = 5
+    args.vdi_num = 5
+    args.vpi_num = 5
 
     # record overall result in list
     overall_score = []
@@ -76,7 +76,7 @@ if __name__ == "__main__":
         ep_collision_ticks = [0]
         ep_completion = [0]
         ep_rmse = [0]
-        # other metrics
+        # vpi metrics
         surrounding_veh_num_list = []
         max_surrounding_veh_num = 0
         while True:
@@ -88,7 +88,7 @@ if __name__ == "__main__":
                 action_time_list.append(action_time_2 - action_time_1)
                 action_dict[ego_id] = [action]
                 #
-                surrounding_veh_num = sum(ego_state['mask_npc']) + sum(ego_state['mask_other'])
+                surrounding_veh_num = sum(ego_state['mask_vdi']) + sum(ego_state['mask_vpi'])
                 surrounding_veh_num_list.append(surrounding_veh_num)
                 if surrounding_veh_num > max_surrounding_veh_num:
                     max_surrounding_veh_num = surrounding_veh_num

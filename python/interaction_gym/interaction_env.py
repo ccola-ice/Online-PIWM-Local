@@ -22,7 +22,7 @@ from interaction_map import InteractionMap
 from interaction_render import InteractionRender
 from track_loader import DatasetLoader, PredictionLoader
 from vehicle_model import ControlledVehicle
-from vehicle_policy import NpcPolicy
+from vehicle_policy import NpcPolicy # NpcPolicy
 from observation import Observation
 
 class InteractionEnv:
@@ -36,8 +36,8 @@ class InteractionEnv:
         # env settings
         self._map_name = settings['map_name']
         self._max_steps = settings['max_steps'] # max duration of an episode, if None, equals to the actual lifetime
-        self._npc_type = settings['npc_type'] # reactive or non-reactive npc
-        self._loader_type = settings['loader_type'] # npc routes from INTERACTIVE dataset, or from in-house prediction dataset
+        self._vdi_type = settings['vdi_type'] # reactive or non-reactive vdi
+        self._loader_type = settings['loader_type'] # vdi routes from INTERACTIVE dataset, or from in-house prediction dataset
         self._route_type = settings['route_type'] # ground truth or centerline(derived from ground truth) or in-house prediction
         # ego settings
         self._drive_as_record = settings['drive_as_record'] # ego drive as record, in other words, 'replaying'
@@ -68,7 +68,7 @@ class InteractionEnv:
             print('Please check if str args is right')
 
         # visualization render
-        # TODO: npc and other's number should be considered in color
+        # TODO: vdi and vpi's number should be considered in color
         self._render = InteractionRender(settings)
 
         # some configurations
@@ -84,11 +84,11 @@ class InteractionEnv:
         self.ego_future_route_points_dict = dict()
         # self._ego_route_lanelet_dict = dict()
 
-        self._react_npc_vehicle_dict = dict()
-        self._react_npc_policy_dict = dict()
-        self._react_npc_route_dict = dict()
-        self._react_npc_previous_route_points_dict = dict()
-        self.react_npc_future_route_points_dict = dict()
+        self._react_vdi_vehicle_dict = dict()
+        self._react_vdi_policy_dict = dict()
+        self._react_vdi_route_dict = dict()
+        self._react_vdi_previous_route_points_dict = dict()
+        self.react_vdi_future_route_points_dict = dict()
 
         self._stepnum = 0
         self._current_time = None
@@ -118,12 +118,12 @@ class InteractionEnv:
         self._ego_vehicle_dict.clear()
         self._ego_route_dict.clear()
         # self._ego_route_lanelet_dict.clear()
-        self._react_npc_vehicle_dict.clear()
-        self._react_npc_policy_dict.clear()
-        self._react_npc_route_dict.clear()
+        self._react_vdi_vehicle_dict.clear()
+        self._react_vdi_policy_dict.clear()
+        self._react_vdi_route_dict.clear()
 
         # read tracks and ego informations
-        track_dict = self._track_loader.read_track_file(npc_type=self._npc_type, route_type=self._route_type)
+        track_dict = self._track_loader.read_track_file(vdi_type=self._vdi_type, route_type=self._route_type)
         ego_id_list = self._track_loader.select_ego()
         start_timestamp_list = self._track_loader.get_start_timestamp()
 
@@ -133,7 +133,7 @@ class InteractionEnv:
         self._road_centerline_list = self._map.get_road_centerline_list(self._laneletmap)
         self._render.reset(self._laneletmap, self._road_centerline_list)
 
-        # initialize controlled vehicles (ego and reactive npcs), and their routes to be followed
+        # initialize controlled vehicles (ego and reactive vdis), and their routes to be followed
         self._start_end_state = self._map.controlled_vehicle_start_end_state_dict  # controlled vehicle start & end state dict, key = ego_id, value = (start_time,end_time,length,width,start motion_state,end motion_state)
         if self._loader_type == 'prediction' and self._route_type == 'predict':
             route_dict = self._track_loader.get_ego_routes()
@@ -146,14 +146,14 @@ class InteractionEnv:
         for ego_id, ego_start_end_state in self._start_end_state['ego'].items():
             self._ego_vehicle_dict[ego_id] = ControlledVehicle(ego_start_end_state, self._delta_time, discrete_action_num=self._discrete_action_num, max_speed=self._max_speed) # delta_time means tick-time length
             self._ego_route_dict[ego_id] = route_dict[ego_id]
-        # TODO: don't use the name 'npc', using 'reactive_npc' instead
-        for vehicle_id, vehicle_start_end_state in self._start_end_state['npc'].items():
-            self._react_npc_vehicle_dict[vehicle_id] = ControlledVehicle(vehicle_start_end_state, self._delta_time, discrete_action_num=self._discrete_action_num, max_speed=self._max_speed)
-            self._react_npc_route_dict[vehicle_id] = route_dict[vehicle_id] # react npc usually runs in ground truth route
-            self._react_npc_policy_dict[vehicle_id] = NpcPolicy(agg_prec=0.5)
+        # TODO: don't use the name 'vdi', using 'reactive_vdi' instead
+        for vehicle_id, vehicle_start_end_state in self._start_end_state['vdi'].items():
+            self._react_vdi_vehicle_dict[vehicle_id] = ControlledVehicle(vehicle_start_end_state, self._delta_time, discrete_action_num=self._discrete_action_num, max_speed=self._max_speed)
+            self._react_vdi_route_dict[vehicle_id] = route_dict[vehicle_id] # react vdi usually runs in ground truth route
+            self._react_vdi_policy_dict[vehicle_id] = NpcPolicy(agg_prec=0.5)
 
-        # controlled vehicle (ego + reactive npcs) observation manager init
-        controlled_vehicle_dict = {'ego': self._ego_vehicle_dict, 'npc': self._react_npc_vehicle_dict}
+        # controlled vehicle (ego + reactive vdis) observation manager init
+        controlled_vehicle_dict = {'ego': self._ego_vehicle_dict, 'vdi': self._react_vdi_vehicle_dict}
         self._observation = Observation(self._settings, self._map, self._road_centerline_list, controlled_vehicle_dict)
 
         # time setting
@@ -174,14 +174,14 @@ class InteractionEnv:
     def reset(self):
         # clear previous route points record
         self._ego_previous_route_points_dict.clear()
-        self._react_npc_previous_route_points_dict.clear()
+        self._react_vdi_previous_route_points_dict.clear()
         # clear trajectory record
         self._ego_trajectory_record.clear()
         # for jerk and steer reward calculation if they exist
         self._ego_previous_acc = 0
         self._ego_previous_steer = 0
 
-        # initialize controlled vehicle (ego + reactive npc) state
+        # initialize controlled vehicle (ego + reactive vdi) state
         ego_state_dict = dict()
         for ego_id, ego_state in self._start_end_state['ego'].items():
             ego_state_dict[ego_id] = ego_state[4] # NOTE: now "state" only contains start motion_state: (time_stamp_ms, x, y, vx, vy, psi_rad)
@@ -190,12 +190,12 @@ class InteractionEnv:
                 ego_state.reset_state(self._start_end_state['ego'][ego_id][4])
                 self._ego_trajectory_record[ego_id].append([ego_state._current_state.x, ego_state._current_state.y, 
                                                             ego_state._current_state.vx, ego_state._current_state.vy, ego_state._current_state.psi_rad])
-        react_npc_state_dict = dict()
-        if self._npc_type == 'react':
-            for react_npc_id, react_npc_state in self._start_end_state['npc'].items():
-                react_npc_state_dict[react_npc_id] = react_npc_state[4]        
-            for react_npc_id, react_npc_state in self._react_npc_vehicle_dict.items():
-                react_npc_state.reset_state(self._start_end_state['npc'][react_npc_id][4])
+        react_vdi_state_dict = dict()
+        if self._vdi_type == 'react':
+            for react_vdi_id, react_vdi_state in self._start_end_state['vdi'].items():
+                react_vdi_state_dict[react_vdi_id] = react_vdi_state[4]        
+            for react_vdi_id, react_vdi_state in self._react_vdi_vehicle_dict.items():
+                react_vdi_state.reset_state(self._start_end_state['vdi'][react_vdi_id][4])
 
         # initialize global environment time
         self._current_time = self._scenario_start_time
@@ -205,15 +205,15 @@ class InteractionEnv:
         self._total_stepnum = (self._scenario_end_time - self._scenario_start_time) / self._delta_time
 
         # env update, TODO: rename it as tick?
-        controlled_state_dict = dict(ego_state_dict.items() + react_npc_state_dict.items())
+        controlled_state_dict = dict(ego_state_dict.items() + react_vdi_state_dict.items())
         self._map.update_param(self._current_time, controlled_state_dict, ghost_vis=self._ghost_visualization)
         
         # reset/clear observation and get initial observation
-        self._observation.reset(self._route_type, self._ego_route_dict, self._react_npc_route_dict) # , self._ego_route_lanelet_dict
+        self._observation.reset(self._route_type, self._ego_route_dict, self._react_vdi_route_dict) # , self._ego_route_lanelet_dict
         self.observation_dict = self._observation.get_scalar_observation(self._current_time)
 
         # target point for PID control
-        self.ego_future_route_points_dict, self.react_npc_future_route_points_dict = self._observation.get_future_route_points(self.observation_dict)
+        self.ego_future_route_points_dict, self.react_vdi_future_route_points_dict = self._observation.get_future_route_points(self.observation_dict)
         
         # visualize map, vehicles and ego's planned future route
         if self._visualization:
@@ -222,9 +222,9 @@ class InteractionEnv:
             surrounding_vehicle_id_list = self._observation.get_surrounding_vehicle_id(self.observation_dict)
             self._render.render_vehicles(surrounding_vehicle_id_list, self._ghost_visualization)
             if self._route_visualization:
-                static_route_dict = self._ego_route_dict # dict(self._ego_route_dict.items() + self._react_npc_route_dict.items())
+                static_route_dict = self._ego_route_dict # dict(self._ego_route_dict.items() + self._react_vdi_route_dict.items())
                 self._render.render_static_route(static_route_dict, axes_type='grid')
-                future_route_dict = self.ego_future_route_points_dict # dict(self.ego_future_route_points_dict.items() + self.react_npc_future_route_points_dict.items())
+                future_route_dict = self.ego_future_route_points_dict # dict(self.ego_future_route_points_dict.items() + self.react_vdi_future_route_points_dict.items())
                 self._render.render_future_route(future_route_dict, axes_type='grid')
             if self._route_bound_visualization:
                 self._render.render_route_bound(self._observation.ego_route_left_bound_points, self._observation.ego_route_right_bound_points)
@@ -251,7 +251,7 @@ class InteractionEnv:
         reward_dict = dict()
         aux_info_dict = dict()
 
-        react_npc_state_dict = dict()
+        react_vdi_state_dict = dict()
 
         # update ego state
         if self._drive_as_record: # in this mode, ego action is useless
@@ -278,26 +278,26 @@ class InteractionEnv:
                     ego_state_dict[ego_id] = ego_state
                     ego_action_dict[ego_id] = ego_action
                     
-        # update react npc's action and state
-        if self._npc_type == 'react':
-            for react_npc_id in self._react_npc_vehicle_dict.keys():
-                # get react npc's action, only consider target speed
-                if self.observation_dict['reach_goal'][react_npc_id]:
+        # update react vdi's action and state
+        if self._vdi_type == 'react':
+            for react_vdi_id in self._react_vdi_vehicle_dict.keys():
+                # get react vdi's action, only consider target speed
+                if self.observation_dict['reach_goal'][react_vdi_id]:
                     react_action = -100.
                 else:
-                    react_action = self._react_npc_policy_dict[react_npc_id].run_step(self._react_npc_vehicle_dict[react_npc_id], self._ego_vehicle_dict[ego_id])
-                    behavior_type = self._react_npc_policy_dict[react_npc_id].get_behavior_type()
-                react_npc_action = [react_action]
+                    react_action = self._react_vdi_policy_dict[react_vdi_id].run_step(self._react_vdi_vehicle_dict[react_vdi_id], self._ego_vehicle_dict[ego_id])
+                    behavior_type = self._react_vdi_policy_dict[react_vdi_id].get_behavior_type()
+                react_vdi_action = [react_action]
                 # get route points
-                future_route_points_list = self.react_npc_future_route_points_dict[react_npc_id]
+                future_route_points_list = self.react_vdi_future_route_points_dict[react_vdi_id]
                 index = int(len(future_route_points_list)/2)
                 target_point = [future_route_points_list[index][0], future_route_points_list[index][1]]
-                # update react npc's state based on action and predefined route
-                react_npc_state, _ = self._react_npc_vehicle_dict[react_npc_id].step_continuous_action(react_npc_action, target_point)
-                react_npc_state_dict[react_npc_id] = react_npc_state
+                # update react vdi's state based on action and predefined route
+                react_vdi_state, _ = self._react_vdi_vehicle_dict[react_vdi_id].step_continuous_action(react_vdi_action, target_point)
+                react_vdi_state_dict[react_vdi_id] = react_vdi_state
 
         # update vehicls' states (if visualize ghost ego, then update its state too)
-        controlled_state_dict = dict(ego_state_dict.items() + react_npc_state_dict.items())
+        controlled_state_dict = dict(ego_state_dict.items() + react_vdi_state_dict.items())
         self._map.update_param(self._current_time, controlled_state_dict, ghost_vis=self._ghost_visualization)
 
         # get new observation, calculate rewards and results
@@ -370,7 +370,7 @@ class InteractionEnv:
             aux_info_dict[ego_id]['track_id'] = self._track_loader.track_id
 
         # update target point for PID control
-        self.ego_future_route_points_dict, self.react_npc_future_route_points_dict = self._observation.get_future_route_points(self.observation_dict)
+        self.ego_future_route_points_dict, self.react_vdi_future_route_points_dict = self._observation.get_future_route_points(self.observation_dict)
 
         # visualize map, vehicles and ego's planed route
         if self._visualization:
@@ -381,9 +381,9 @@ class InteractionEnv:
             self._render.render_vehicles(surrounding_vehicle_id_list, self._ghost_visualization)
             # render log defined routes
             if self._route_visualization:
-                static_route_dict = self._ego_route_dict # dict(self._ego_route_dict.items() + self._react_npc_route_dict.items())
+                static_route_dict = self._ego_route_dict # dict(self._ego_route_dict.items() + self._react_vdi_route_dict.items())
                 self._render.render_static_route(static_route_dict, axes_type='grid')
-                future_route_dict = self.ego_future_route_points_dict # dict(self.ego_future_route_points_dict.items() + self.react_npc_future_route_points_dict.items())
+                future_route_dict = self.ego_future_route_points_dict # dict(self.ego_future_route_points_dict.items() + self.react_vdi_future_route_points_dict.items())
                 self._render.render_future_route(future_route_dict, axes_type='grid')
             # render route bounderies
             if self._route_bound_visualization:
@@ -690,7 +690,7 @@ class InteractionEnv:
         # route_lanelet_dict = dict()
 
         track_dict = self._map.track_dict
-        for vehicle_type in ['ego', 'npc']:
+        for vehicle_type in ['ego', 'vdi']:
             for vehicle_id, vehicle_start_end_state in self._start_end_state[vehicle_type].items():
                 vehicle_dict = track_dict[vehicle_id]
                 # time horizen

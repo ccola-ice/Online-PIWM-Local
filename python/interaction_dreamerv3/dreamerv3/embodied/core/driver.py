@@ -81,12 +81,12 @@ class Driver:
           ego_pos = obs['ego'][i][-1][2:4] # 从obs中获取'ego'键对应的值
           ego_heading = obs['ego'][i][-1][4] 
           # for the vehicles state that are in the scene
-          condition = [key.startswith('ego'), key.startswith('npc_') and obs_for_infer['mask_npc'][i][int(key[-1])-1], key.startswith('other_') and obs_for_infer['mask_other'][i][int(key[-1])-1]] # [False, True, False]                                                         
+          condition = [key.startswith('ego'), key.startswith('vdi_') and obs_for_infer['mask_vdi'][i][int(key[-1])-1], key.startswith('vpi_') and obs_for_infer['mask_vpi'][i][int(key[-1])-1]] # [False, True, False]                                                         
           if sum(condition) > 0: # sum(condition) = 1
             # convert position from global frame to ego frame
             localized_traj_state = localize_vector_transform_list(ego_pos, ego_heading, obs_for_infer[key][i])
             state.append(localized_traj_state)
-          # for zero padded vehicles obs no needs to convert, for other obs(rewards, is_first, is_last, etc.), shouldnt change
+          # for zero padded vehicles obs no needs to convert, for vpi obs(rewards, is_first, is_last, etc.), shouldnt change
           else:
             state.append(obs_for_infer[key][i])
         obs_for_infer[key] = np.array(state)
@@ -112,13 +112,13 @@ class Driver:
       prediction = {k: convert(v) for k, v in prediction.items()} # convert data type
       stacked_prediction = prediction['ego_prediction']
       stacked_prediction = np.expand_dims(stacked_prediction, axis=1)
-      # stack prediction as ego, npc_1 ... npc_n
+      # stack prediction as ego, vdi_1 ... vdi_n
       for i in range(len(prediction.keys()) - 1):
-        npc_prediction = np.expand_dims(prediction[f'npc_{i+1}_prediction'], axis=1)
-        stacked_prediction = np.concatenate([stacked_prediction, npc_prediction], axis=1)
-      npc_mask = obs['mask_npc']
-      ego_mask = np.ones(list(npc_mask.shape[:1]) + [1])
-      mask = np.concatenate([ego_mask, npc_mask], axis=1)
+        vdi_prediction = np.expand_dims(prediction[f'vdi_{i+1}_prediction'], axis=1)
+        stacked_prediction = np.concatenate([stacked_prediction, vdi_prediction], axis=1)
+      vdi_mask = obs['mask_vdi']
+      ego_mask = np.ones(list(vdi_mask.shape[:1]) + [1])
+      mask = np.concatenate([ego_mask, vdi_mask], axis=1)
       mask = mask.reshape(list(mask.shape) + [1,1])
       stacked_prediction = np.where(mask, stacked_prediction, 0.)
       acts['prediction'] = stacked_prediction

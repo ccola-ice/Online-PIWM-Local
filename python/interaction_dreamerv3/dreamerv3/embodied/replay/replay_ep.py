@@ -64,7 +64,7 @@ def eplen(episode):
 class ReplayEp:
 
   def __init__(
-      self, directory, capacity, batch_size, batch_length, npc_num, other_num, predict_horizen, 
+      self, directory, capacity, batch_size, batch_length, vdi_num, vpi_num, predict_horizen, 
       ongoing=False, minlen=1, maxlen=0, prioritize_ends=False):
     # make a dir
     self._directory = pathlib.Path(directory).expanduser()
@@ -80,8 +80,8 @@ class ReplayEp:
     self._maxlen = maxlen
     self._prioritize_ends = prioritize_ends # 'True' by defualt in dmv2 configs
     # configs of env
-    self._npc_num = npc_num
-    self._other_num = other_num
+    self._vdi_num = vdi_num
+    self._vpi_num = vpi_num
     self._predict_horizen = predict_horizen
     self._predict_task = True if self._predict_horizen > 0 else False
 
@@ -133,32 +133,32 @@ class ReplayEp:
 
     # make prediction data, and convert data from global frame to ego frame
     ego_state_ego_frame_list = []
-    npc_state_ego_frame_dict = collections.defaultdict(list)
-    other_state_ego_frame_dict = collections.defaultdict(list) # for other vehicles state, we only needs it as state input
+    vdi_state_ego_frame_dict = collections.defaultdict(list)
+    vpi_state_ego_frame_dict = collections.defaultdict(list) # for vpi vehicles state, we only needs it as state input
 
     if self._predict_task:
       ego_prediction_ego_frame_list = []
-      npc_prediction_ego_frame_dict = collections.defaultdict(list)
+      vdi_prediction_ego_frame_dict = collections.defaultdict(list)
 
     for time_step in range(len(episode['ego'])):
       # 1. make prediction data in global frame in current time step
       if self._predict_task:
         # ego prediction data in global frame
         ego_prediction = [true_episode['ego'][t][-1][2:4] for t in range(time_step + 1, time_step + self._predict_horizen + 1)] # ...[t][-1][2:4] is the global position in t timestep
-        # npc prediction data in global frame
-        npc_prediction_dict = collections.defaultdict(list)
-        for i in range(self._npc_num):
+        # vdi prediction data in global frame
+        vdi_prediction_dict = collections.defaultdict(list)
+        for i in range(self._vdi_num):
           
-          if episode['mask_npc'][time_step][i] == 1: # if npc_i is in the scene in current time step
-            # align prediction data with npc id
-            npc_id = episode['id_npc'][time_step][i] # get npc's id
+          if episode['mask_vdi'][time_step][i] == 1: # if vdi_i is in the scene in current time step
+            # align prediction data with vdi id
+            vdi_id = episode['id_vdi'][time_step][i] # get vdi's id
             for t in range(time_step + 1, time_step + self._predict_horizen + 1):
-              if true_episode['id_npc'][t][i] == npc_id: # if id not change, which means it is the same npc vehicle
-                npc_prediction_dict[f'npc_{i+1}'].append(true_episode[f'npc_{i+1}'][t][-1][2:4])
-              else: # if id changes, means it is a new npc vehicle in time t, prediction data of original npc vehicle is missing
-                npc_prediction_dict[f'npc_{i+1}'].append(np.array([0., 0.]))
-          else: # if npc_i is missing in current time step, then it has no prediction data
-            npc_prediction_dict[f'npc_{i+1}'] = [np.array([0., 0.])] * self._predict_horizen
+              if true_episode['id_vdi'][t][i] == vdi_id: # if id not change, which means it is the same vdi vehicle
+                vdi_prediction_dict[f'vdi_{i+1}'].append(true_episode[f'vdi_{i+1}'][t][-1][2:4])
+              else: # if id changes, means it is a new vdi vehicle in time t, prediction data of original vdi vehicle is missing
+                vdi_prediction_dict[f'vdi_{i+1}'].append(np.array([0., 0.]))
+          else: # if vdi_i is missing in current time step, then it has no prediction data
+            vdi_prediction_dict[f'vdi_{i+1}'] = [np.array([0., 0.])] * self._predict_horizen
     
       # 2. trans data from global frame to ego frame
       ego_current_location, ego_current_heading = true_episode['ego'][time_step][-1][2:4], true_episode['ego'][time_step][-1][4]
@@ -168,40 +168,40 @@ class ReplayEp:
       if self._predict_task:
         ego_prediction_ego_frame, _ = localize_transform_list(ego_current_location, ego_current_heading, ego_prediction)
         ego_prediction_ego_frame_list.append(ego_prediction_ego_frame)
-      # npc state and prediction data from global frame to ego frame
-      for i in range(self._npc_num):
-        if episode['mask_npc'][time_step][i] == 1: # only trans npc which is in the detection range
-          npc_state_ego_frame = localize_vector_transform_list(ego_current_location, ego_current_heading, episode[f'npc_{i+1}'][time_step])
-          npc_state_ego_frame_dict[f'npc_{i+1}'].append(npc_state_ego_frame)
+      # vdi state and prediction data from global frame to ego frame
+      for i in range(self._vdi_num):
+        if episode['mask_vdi'][time_step][i] == 1: # only trans vdi which is in the detection range
+          vdi_state_ego_frame = localize_vector_transform_list(ego_current_location, ego_current_heading, episode[f'vdi_{i+1}'][time_step])
+          vdi_state_ego_frame_dict[f'vdi_{i+1}'].append(vdi_state_ego_frame)
           if self._predict_task:
             # mask prediction data, TODO: waste of calculation
-            prediction_mask = np.array([pred != [0., 0.] for pred in npc_prediction_dict[f'npc_{i+1}']])
-            # print('npc prediction mask:', prediction_mask)
-            npc_prediction_ego_frame, _ = localize_transform_list(ego_current_location, ego_current_heading, npc_prediction_dict[f'npc_{i+1}'])
-            masked_npc_prediction = npc_prediction_ego_frame * self._expand(prediction_mask, len(npc_prediction_ego_frame[0]))
-            npc_prediction_ego_frame_dict[f'npc_{i+1}'].append(masked_npc_prediction)
+            prediction_mask = np.array([pred != [0., 0.] for pred in vdi_prediction_dict[f'vdi_{i+1}']])
+            # print('vdi prediction mask:', prediction_mask)
+            vdi_prediction_ego_frame, _ = localize_transform_list(ego_current_location, ego_current_heading, vdi_prediction_dict[f'vdi_{i+1}'])
+            masked_vdi_prediction = vdi_prediction_ego_frame * self._expand(prediction_mask, len(vdi_prediction_ego_frame[0]))
+            vdi_prediction_ego_frame_dict[f'vdi_{i+1}'].append(masked_vdi_prediction)
         else: # for zero padded data, keep it zero
-          npc_state_ego_frame_dict[f'npc_{i+1}'].append(episode[f'npc_{i+1}'][time_step])
+          vdi_state_ego_frame_dict[f'vdi_{i+1}'].append(episode[f'vdi_{i+1}'][time_step])
           if self._predict_task:
-            npc_prediction_ego_frame_dict[f'npc_{i+1}'].append(npc_prediction_dict[f'npc_{i+1}'])
-      # other state to ego frame
-      for i in range(self._other_num):
-        if episode['mask_other'][time_step][i] == 1: # only trans other which is in the detection range
-          other_state_ego_frame = localize_vector_transform_list(ego_current_location, ego_current_heading, episode[f'other_{i+1}'][time_step])
-          other_state_ego_frame_dict[f'other_{i+1}'].append(other_state_ego_frame)
+            vdi_prediction_ego_frame_dict[f'vdi_{i+1}'].append(vdi_prediction_dict[f'vdi_{i+1}'])
+      # vpi state to ego frame
+      for i in range(self._vpi_num):
+        if episode['mask_vpi'][time_step][i] == 1: # only trans vpi which is in the detection range
+          vpi_state_ego_frame = localize_vector_transform_list(ego_current_location, ego_current_heading, episode[f'vpi_{i+1}'][time_step])
+          vpi_state_ego_frame_dict[f'vpi_{i+1}'].append(vpi_state_ego_frame)
         else:
-          other_state_ego_frame_dict[f'other_{i+1}'].append(episode[f'other_{i+1}'][time_step])
+          vpi_state_ego_frame_dict[f'vpi_{i+1}'].append(episode[f'vpi_{i+1}'][time_step])
     
     # 3. update episode data which is used in training
     episode['ego'] = ego_state_ego_frame_list
     if self._predict_task:
       episode['ego_prediction'] = ego_prediction_ego_frame_list
-    for i in range(self._npc_num):
-      episode[f'npc_{i+1}'] = npc_state_ego_frame_dict[f'npc_{i+1}']
+    for i in range(self._vdi_num):
+      episode[f'vdi_{i+1}'] = vdi_state_ego_frame_dict[f'vdi_{i+1}']
       if self._predict_task:
-        episode[f'npc_{i+1}_prediction'] = npc_prediction_ego_frame_dict[f'npc_{i+1}']
-    for i in range(self._other_num):
-      episode[f'other_{i+1}'] = other_state_ego_frame_dict[f'other_{i+1}']
+        episode[f'vdi_{i+1}_prediction'] = vdi_prediction_ego_frame_dict[f'vdi_{i+1}']
+    for i in range(self._vpi_num):
+      episode[f'vpi_{i+1}'] = vpi_state_ego_frame_dict[f'vpi_{i+1}']
 
     episode = {key: embodied.convert(value) for key, value in episode.items()} # convert data type
 
