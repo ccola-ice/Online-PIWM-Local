@@ -4,6 +4,8 @@ from matplotlib.collections import PatchCollection
 
 from interaction_gym import geometry
 
+import yaml
+
 def set_get_visible_area(laneletmap, axes):
     min_x = 10e9
     min_y = 10e9
@@ -167,11 +169,16 @@ def draw_controlled_vehicles(motionstate_dict, polygon_dict, patch_dict, text_di
 
 
 def draw_uncontrolled_vehicle(motionstate_dict, polygon_dict, patch_dict, text_dict, grid_axes, vector_axes, surrounding_vehicle_id_list):
+    
+    with open('configs.yaml', 'r') as file:
+        config = yaml.safe_load(file)
+    vdi_num = config['interaction_prediction']['vdi_num']
+
     for v_id in motionstate_dict.keys():
         # color, yellow for surrounding otherwise blue
         # TODO: a proper way to set colors
         if v_id in surrounding_vehicle_id_list:
-            color = 'orange' if v_id in surrounding_vehicle_id_list[:5] else 'y'
+            color = 'orange' if v_id in surrounding_vehicle_id_list[:vdi_num] else 'y'
         else:
             color = 'b'
         # draw uncotrolled vehicles
@@ -179,7 +186,7 @@ def draw_uncontrolled_vehicle(motionstate_dict, polygon_dict, patch_dict, text_d
             rect = matplotlib.patches.Polygon(polygon_dict[v_id], closed=True, facecolor=color, edgecolor='black', zorder=20)
             circle = matplotlib.patches.CirclePolygon((motionstate_dict[v_id].x, motionstate_dict[v_id].y), radius=1, facecolor=color, edgecolor='black', zorder=20)
             patch_dict[v_id] = [rect, circle]
-            # set them in different maps
+            # set them in d            python3 -m pip install ipythonifferent maps
             grid_axes.add_patch(patch_dict[v_id][0])
             vector_axes.add_patch(patch_dict[v_id][1])
             # vehicle id in grid map
