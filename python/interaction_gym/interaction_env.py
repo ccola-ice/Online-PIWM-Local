@@ -53,17 +53,20 @@ class InteractionEnv:
         
         # maps and tracks dirs
         root_dir = os.path.dirname(os.path.abspath(__file__))
-        dataset_dir = os.path.join(root_dir, "dataset")
-        groundtruth_tracks_dir = os.path.join(dataset_dir, "recorded_trackfiles", self._map_name)
+        dataset_dir = os.path.join(root_dir, "dataset") # dataset_dir = {root_dir}/dataset
+        groundtruth_tracks_dir = os.path.join(dataset_dir, "recorded_trackfiles", self._map_name) # groundtruth_tracks_dir = {dataset_dir}/recorded_trackfiles/{map_name} 
         # load map
         map_file_path = os.path.join(dataset_dir, "maps", self._map_name + '.osm')
         self._map = InteractionMap(map_file_path, settings)
+        
         # load vehicle tracks
         if self._loader_type == 'prediction':
-            prediction_tracks_dir = os.path.join(root_dir, 'prediction', self._map_name)
-            self._track_loader = PredictionLoader(prediction_tracks_dir, groundtruth_tracks_dir, ego_num=1, only_trouble=settings['only_trouble'], eval=self._eval)
+            prediction_tracks_dir = os.path.join(root_dir, 'prediction', self._map_name) # prediction_tracks_dir = {root_dir}/prediction/{map_name}
+            self._track_loader = PredictionLoader(prediction_tracks_dir, groundtruth_tracks_dir, ego_num=1, ego_max_length=5.5, eval=self._eval)
+        
         elif self._loader_type == 'dataset': 
             self._track_loader = DatasetLoader(groundtruth_tracks_dir, eval=self._eval)
+        
         else:
             print('Please check if str args is right')
 
@@ -105,8 +108,13 @@ class InteractionEnv:
     
     def change_track(self):
         # TODO: get rid of the prediction datasets
-        if self._loader_type == 'prediction':
-            gt_csv_index = self._track_loader.change_track_file(file_name='5_45800_55800_33P0.pkl') # for small scale experiment
+        if self._loader_type == 'prediction': # server.gym_env._loader_type == 'prediction'
+            gt_csv_index = self._track_loader.change_track_file() # for small scale experiment
+            #  gt_csv_index = server.gym_env._track_loader.change_track_file()
+            #  gt_csv_index = PredictionLoader.change_track_file()
+            #  5_45800_55800_33P0.pkl，返回csv索引号
+            #  gt_csv_index = PredictionLoader._extract_data_from_files(file_name)
+            #  
         elif self._loader_type == 'dataset': 
             gt_csv_index = self._track_loader.change_track_file()
         else:
@@ -114,6 +122,8 @@ class InteractionEnv:
         return gt_csv_index
 
     def scenario_init(self):
+        # self --> server.gym_env
+        
         # clear variables
         self._ego_vehicle_dict.clear()
         self._ego_route_dict.clear()
@@ -169,7 +179,6 @@ class InteractionEnv:
 
         # return self._map._ego_id_list
         return ego_id_list
-
 
     def reset(self):
         # clear previous route points record
@@ -239,8 +248,11 @@ class InteractionEnv:
         return self.observation_dict
 
 
+    # 输入：动作
+    # 返回：observation_dict, reward_dict, done_dict, aux_info_dict
     def step(self, action_dict, prediction=None):
-
+        # self --> server.gym_env
+        
         # episode step and current time count
         self._stepnum += 1
         self._current_time += self._delta_time
@@ -254,6 +266,7 @@ class InteractionEnv:
         react_vdi_state_dict = dict()
 
         # update ego state
+        
         if self._drive_as_record: # in this mode, ego action is useless
             for ego_id in action_dict.keys():
                 ego_state = self._map.track_dict[ego_id].motion_states[self._current_time]
@@ -261,7 +274,7 @@ class InteractionEnv:
                 ego_state_dict[ego_id] = ego_state
                 ego_action_dict[ego_id] = None
         else:
-            if self._control_steering:
+            if self._control_steering: # 控制转向
                 for ego_id, action_list in action_dict.items():
                     ego_state, ego_action = self._ego_vehicle_dict[ego_id].step_continuous_action(action_list)
                     ego_state_dict[ego_id] = ego_state
@@ -270,7 +283,7 @@ class InteractionEnv:
                 for ego_id, action_list in action_dict.items():
                     future_route_points_list = self.ego_future_route_points_dict[ego_id]
                     index = int(len(future_route_points_list) / 2) # middle point of future 5 points
-                    target_point = [future_route_points_list[index][0], future_route_points_list[index][1]]
+                    target_point = [future_route_points_list[index][0], future_route_points_list[index][1]] # (x,y)坐标中点
                     if self._continous_action:
                         ego_state, ego_action = self._ego_vehicle_dict[ego_id].step_continuous_action(action_list, target_point)
                     else:
@@ -373,6 +386,7 @@ class InteractionEnv:
         self.ego_future_route_points_dict, self.react_vdi_future_route_points_dict = self._observation.get_future_route_points(self.observation_dict)
 
         # visualize map, vehicles and ego's planed route
+        # 可视化相关
         if self._visualization:
             self._render.update_param(self._map)
             # specified ego(with/without ghost ego) and selected vehicle highlight
@@ -683,7 +697,6 @@ class InteractionEnv:
 
         return route
 
-
     # generate ground truth routes
     def get_ground_truth_route(self, interval_distance=2.):
         ground_truth_route_dict = dict()
@@ -823,7 +836,7 @@ class SeverInterface:
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
         self.port = port
-        url = ':'.join(["tcp://*", str(self.port)])
+        url = ':'.join(["tcp://*", str(self.port)]) # url = 'tcp://*:5561'
         self.socket.bind(url)
         self.gym_env = None
 
@@ -841,62 +854,74 @@ class SeverInterface:
             if str_message == 'close':
                 self.socket.close()
                 return
-            message = eval(str_message)
+            message = eval(str_message) # 字符串转换为字典
 
+            # 读取client发送的message，根据message的command执行相应的操作 
             # env init
             if message['command'] == 'env_init':
                 print('I-SIM initialize...')
-                self.gym_env = InteractionEnv(message['content'])
+                self.gym_env = InteractionEnv(message['content']) # 读取从client发送的message，初始化self.gym_env
+                # self.gym_env._settings = message['content']; self.gym_env._map_name = message['content']['map_name']......
                 self.socket.send_string('env_init_done')
-                self.env_init_flag = True
+                self.env_init_flag = True # env init标志位置1
 
             # change track file
-            elif message['command'] == 'track_init':
+            elif message['command'] == 'track_init': # 更改轨迹文件
                 print('Vehicles tracks initialize...')
-                gt_csv_index = self.gym_env.change_track()
-                self.socket.send_string(str(gt_csv_index))
-                self.can_change_track_file_flag = False
+                gt_csv_index = self.gym_env.change_track() # server.gym_env.change_track() 改变轨迹并返回轨迹号
+                self.socket.send_string(str(gt_csv_index)) # gt_csv_index转换为字符串发送给client
+                self.can_change_track_file_flag = False    
 
-            # choose ego & initialize map 
-            elif message['command'] == 'scen_init':
+            # choose ego & initialize map  
+            elif message['command'] == 'scen_init':  # 更改ego车辆和初始化地图
                 print('Scenario initialize...')
-                ego_id_list = self.gym_env.scenario_init()
-                self.socket.send_string(str(ego_id_list))
+                ego_id_list = self.gym_env.scenario_init() # 初始化scenario，返回ego_id_list，包含所有ego的id
+                self.socket.send_string(str(ego_id_list))  # 发送ego id给client
                 self.scen_init_flag = True
 
             # reset
             elif message['command'] == 'reset':
                 print('Env reset...')
-                observation_dict = self.gym_env.reset()
+                observation_dict = self.gym_env.reset() # 返回观测数据
                 if observation_dict is not None:
                     self.reset_flag = True
                     # remove some unuseable item
                     condensed_observation_dict = copy.deepcopy(observation_dict)
                     condensed_observation_dict = self.pop_useless_item(condensed_observation_dict)
                     reset_message = {'observation': condensed_observation_dict, 'reward': 0, 'done': False}
-                    self.socket.send_string(str(reset_message).encode())
-                else:
+                    self.socket.send_string(str(reset_message).encode()) # 
+                else: 
                     self.scen_init_flag = False
                     self.socket.send_string(str(self.reset_flag).encode())
 
             # step
-            elif message['command'] == 'step':
+            # 一个gym仿真步进
+            elif message['command'] == 'step': 
                 # receiving action
+                # 收集每个ego车辆的动作指令
                 action_dict = dict()
                 for ego_id in self.gym_env._ego_vehicle_dict.keys():
                     action_dict[ego_id] = message['content'][ego_id]
+                # 收集预测信息
                 prediction = message['content']['prediction']
+                # 执行环境步进，返回观测、奖励、完成状态、辅助信息
                 observation_dict, reward_dict, done_dict, aux_info_dict = self.gym_env.step(action_dict, prediction=prediction)
 
+                # 检查是否所有ego车辆都完成任务
                 if False not in done_dict.values(): # all egos are done
-                    self.can_change_track_file_flag = True
+                    self.can_change_track_file_flag = True # 切换轨迹标志位置1
                     self.scen_init_flag = False
                     self.reset_flag = False
-                if observation_dict is not None:
-                    condensed_observation_dict = copy.deepcopy(observation_dict)
-                    condensed_observation_dict = self.pop_useless_item(condensed_observation_dict)
-                    step_message = {'observation': condensed_observation_dict, 'reward': reward_dict, 'done': done_dict, 'aux_info': aux_info_dict}
-                    self.socket.send_string(str(step_message).encode())
+                
+                # 数据处理并发送
+                if observation_dict is not None: # 
+                    condensed_observation_dict = copy.deepcopy(observation_dict) # 深拷贝
+                    condensed_observation_dict = self.pop_useless_item(condensed_observation_dict) # 移除一些无用的信息，精简obersevation数据
+                    step_message = {'observation': condensed_observation_dict, 
+                                    'reward': reward_dict, 
+                                    'done': done_dict, 
+                                    'aux_info': aux_info_dict} # 构建返回消息 
+                    self.socket.send_string(str(step_message).encode()) # 编码并发送
 
             else:
                 print('env_init:', self.env_init_flag)
@@ -919,9 +944,10 @@ class SeverInterface:
 if __name__ == "__main__":
 
     # for docker external communication test
-    parser = argparse.ArgumentParser()
+    # 命令行解析
+    parser = argparse.ArgumentParser() # 创建一个ArgumentParser对象
     parser.add_argument("--port", type=int, help="Number of the port (int)", default=None, nargs="?")
-    args = parser.parse_args()
+    args = parser.parse_args() # 解析命令行参数
 
-    sever = SeverInterface(args.port)
-    sever.start_communication()
+    sever = SeverInterface(args.port) # 初始化服务器端口和其他参数
+    sever.start_communication() # 开始通信

@@ -12,8 +12,8 @@ class Interaction(embodied.Env):
   
   def __init__(self, task, args):
     self._task = task # 'prediction', 'branch', 'recon'
-    self._args = args # args就是kwargs，也就是config里的内容(第1次)
-    self._env = ClientInterface(self._args) #调用的是ClientInterface类的__init__方法，返回值是？
+    self._args = args # kwargs
+    self._env = ClientInterface(self._args) # self._env.args=xxx, self._env.discrete_action_num=4,self._env.xxx=xxx......
     self._done = True
     print('Set I-SIM env successfully!')
 

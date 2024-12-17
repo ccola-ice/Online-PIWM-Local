@@ -28,7 +28,7 @@ class ClientInterface(object):
 
     def __init__(self, args, record=True):
         # env args
-        self.args = Dict2Class(args) if isinstance(args, dict) else args # 这句之后，后面就可以用self.args.xxx来访问参数了
+        self.args = Dict2Class(args) if isinstance(args, dict) else args # self.args.xxx访问
         self.discrete_action_num = 4
         self.action_space = gym.spaces.Discrete(self.discrete_action_num)
 
@@ -73,6 +73,7 @@ class ClientInterface(object):
         settings = vars(args)
         # send to env
         message_send = {'command': 'env_init', 'content': settings}
+        # print("in _env_initialize def(), settings: ",settings)
         self._socket.send_string(str(message_send))
         # recieve from env
         message_recv = self._socket.recv_string()
@@ -85,6 +86,7 @@ class ClientInterface(object):
         # send to env
         # for simple react scenarios, the track file is fixed
         message_send = {'command': 'track_init'}
+        # client发送message
         self._socket.send_string(str(message_send))
         # recieve from env
         message_recv = self._socket.recv()

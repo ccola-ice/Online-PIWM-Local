@@ -24,13 +24,14 @@ import embodied
 from embodied import wrappers
 
 
-
 def main(argv=None):
   from . import agent as agt
 
-  with open('configs.yaml', 'r') as file:
+  current_dir = pathlib.Path(__file__).resolve().parent
+  config_path = os.path.join(current_dir, 'configs.yaml')
+
+  with open(config_path, 'r') as file:
     config = yaml.safe_load(file)
-  print("config1:",config) 
 
   # 从configs.yaml文件中获取vdi_num和vpi_num的值
   vdi_num   = config['interaction_prediction']['env']['interaction']['vdi_num']
@@ -46,7 +47,7 @@ def main(argv=None):
       **config.run, logdir=config.logdir, 
       batch_steps=config.batch_size * config.batch_length)
   
-  print("config2:",config) 
+  #print("config2:",config) 
   print("vdi_num",vdi_num)
   print("vpi_num",vpi_num)
 
@@ -63,7 +64,7 @@ def main(argv=None):
     'decoder': {'mlp_keys': decoder_mlp_keys},
   })
 
-  print("config3:",config) 
+  #print("config3:",config) 
  
   logdir = embodied.Path(args.logdir)
   logdir.mkdirs()
@@ -81,7 +82,7 @@ def main(argv=None):
         replay = make_replay_ep(config, logdir / 'replay') # ep方式初始化replay_buffer
 
       env = make_envs(config) ## 返回的env为：BatchEnv(len=1, obs_space={'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'vpi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'mask_vpi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_vpi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'reward': Space(dtype=float32, shape=(), low=-inf, high=inf), 'is_first': Space(dtype=bool, shape=(), low=False, high=True), 'is_last': Space(dtype=bool, shape=(), low=False, high=True), 'is_terminal': Space(dtype=bool, shape=(), low=False, high=True), 'sta_speed': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_collision': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_success': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_complet': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_gt_distance': Space(dtype=float32, shape=(1,), low=-inf, high=inf)}, act_space={'action': Space(dtype=float32, shape=(4,), low=0, high=1)})
-      cleanup.append(env) ## 将env加入cleanup列表
+      cleanup.append(env)     ## 将env加入cleanup列表
       agent = agt.Agent(env.obs_space, env.act_space, step, config) # 设置agent
       embodied.run.train(agent, env, replay, logger, args) # 开始训练
 
