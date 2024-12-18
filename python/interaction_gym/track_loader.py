@@ -9,10 +9,10 @@ from geometry import get_track_length
 from utils.dataset_reader import read_trajectory, read_tracks, read_pedestrian
 
 # large_scale dataset
-class DatasetLoader():
+class Large_scale_dataset_loader():
     # get all files in the directory according to the scenario setting
     def __init__(self, gt_tracks_dir, ego_max_length=5.5, ego_num=1, eval=False):
-        # self._track_loader = DatasetLoader(groundtruth_tracks_dir, eval=self._eval)
+        # self._track_loader = Large_scale_dataset_loader(groundtruth_tracks_dir, eval=self._eval)
         # groundtruth_tracks_dir = {dataset_dir}/recorded_trackfiles/{map_name} 
         self._gt_tracks_dir = gt_tracks_dir # {dataset_dir}/recorded_trackfiles/{map_name}
         self._gt_tracks = os.listdir(self._gt_tracks_dir) # get all files in the directory
@@ -99,7 +99,6 @@ class DatasetLoader():
                 if not self._possible_ego_id:
                     self._gt_csv_index = train_num if self._gt_csv_index == tracks_num - 1 else int(self._gt_csv_index) + 1
 
-
     def _get_possible_ego_id(self):
         return copy(self._possible_ego_dict[self._gt_csv_index])
             
@@ -164,7 +163,7 @@ class DatasetLoader():
 
         
 # small_sclae dataset     
-class PredictionLoader():
+class Small_scale_dataset_loader():
     def __init__(self, gt_tracks_dir, ego_max_length=5.5, ego_num=1, eval=False):
         self._gt_tracks_dir = gt_tracks_dir
         self._gt_csv_index = None
@@ -179,7 +178,7 @@ class PredictionLoader():
         self.data_file = None
         
         # small_large数据集
-        self.small_set_dict = {5: [29, 30, 33, 36, 37, 39, 40, 41]}
+        self.small_scale_set_dict = {5: [29, 30, 33, 36, 37, 39, 40, 41]}
         
         # 初始化可能的ego车辆
         self._set_possible_ego_id_dict()
@@ -189,7 +188,7 @@ class PredictionLoader():
         return self._gt_csv_index
     
     def _set_possible_ego_id_dict(self):
-        for csv_index, vehicle_ids in self.small_set_dict.items():
+        for csv_index, vehicle_ids in self.small_scale_set_dict.items():
             possible_ego_id = []
             # 用csv_index
             track_file_path = os.path.join(self._gt_tracks_dir, "vehicle_tracks_" + str(csv_index).zfill(3) + ".csv")
@@ -212,14 +211,14 @@ class PredictionLoader():
     def change_track_file(self):
         if not self._eval:
             if self._gt_csv_index is None:
-                self._gt_csv_index = list(self.small_set_dict.keys())[0]
+                self._gt_csv_index = list(self.small_scale_set_dict.keys())[0]
             else:
-                self._gt_csv_index = list(self.small_set_dict.keys())[0]
+                self._gt_csv_index = list(self.small_scale_set_dict.keys())[0]
         else:
             if self._gt_csv_index is None:
-                self._gt_csv_index = list(self.small_set_dict.keys())[0]
+                self._gt_csv_index = list(self.small_scale_set_dict.keys())[0]
             else:
-                self._gt_csv_index = list(self.small_set_dict.keys())[0]
+                self._gt_csv_index = list(self.small_scale_set_dict.keys())[0]
                 
         return self._gt_csv_index
 

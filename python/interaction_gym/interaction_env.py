@@ -20,7 +20,7 @@ import reward
 
 from interaction_map import InteractionMap
 from interaction_render import InteractionRender
-from track_loader import DatasetLoader, PredictionLoader
+from track_loader import Large_scale_dataset_loader, Small_scale_dataset_loader
 from vehicle_model import ControlledVehicle
 from vehicle_policy import NpcPolicy # NpcPolicy
 from observation import Observation
@@ -60,10 +60,10 @@ class InteractionEnv:
         self._map = InteractionMap(map_file_path, settings)
         
         # load vehicle tracks
-        if self._loader_type == 'prediction':
-            self._track_loader = PredictionLoader(groundtruth_tracks_dir, eval=self._eval)
-        elif self._loader_type == 'dataset': 
-            self._track_loader = DatasetLoader(groundtruth_tracks_dir, eval=self._eval)
+        if self._loader_type == 'small_scale':
+            self._track_loader = Small_scale_dataset_loader(groundtruth_tracks_dir, eval=self._eval)
+        elif self._loader_type == 'large_scale': 
+            self._track_loader = Large_scale_dataset_loader(groundtruth_tracks_dir, eval=self._eval)
         
         else:
             print('Please check if str args is right')
@@ -106,14 +106,13 @@ class InteractionEnv:
     
     def change_track(self):
         # TODO: get rid of the prediction datasets
-        if self._loader_type == 'prediction': # server.gym_env._loader_type == 'prediction'
+        if self._loader_type == 'small_scale': # server.gym_env._loader_type == 'small_scale'
             gt_csv_index = self._track_loader.change_track_file() # for small scale experiment
             #  gt_csv_index = server.gym_env._track_loader.change_track_file()
-            #  gt_csv_index = PredictionLoader.change_track_file()
-            #  5_45800_55800_33P0.pkl，返回csv索引号
-            #  gt_csv_index = PredictionLoader._extract_data_from_files(file_name)
-            #  
-        elif self._loader_type == 'dataset': 
+            #  gt_csv_index = Small_scale_dataset_loader.change_track_file()
+            #  5_45800_55800_33P0.pkl，返回csv索引
+            #  gt_csv_index = Small_scale_dataset_loader._extract_data_from_files(file_name)
+        elif self._loader_type == 'large_scale': 
             gt_csv_index = self._track_loader.change_track_file()
         else:
             print('Please check if str args is right')
@@ -143,7 +142,7 @@ class InteractionEnv:
 
         # initialize controlled vehicles (ego and reactive vdis), and their routes to be followed
         self._start_end_state = self._map.controlled_vehicle_start_end_state_dict  # controlled vehicle start & end state dict, key = ego_id, value = (start_time,end_time,length,width,start motion_state,end motion_state)
-        if self._loader_type == 'prediction' and self._route_type == 'predict':
+        if self._loader_type == 'small_scale' and self._route_type == 'predict':
             route_dict = self._track_loader.get_ego_routes()
         elif self._route_type == 'ground_truth':
             route_dict = self.get_ground_truth_route()
@@ -858,6 +857,7 @@ class SeverInterface:
             # env init
             if message['command'] == 'env_init':
                 print('I-SIM initialize...')
+                print()
                 self.gym_env = InteractionEnv(message['content']) # 读取从client发送的message，初始化self.gym_env
                 # self.gym_env._settings = message['content']; self.gym_env._map_name = message['content']['map_name']......
                 self.socket.send_string('env_init_done')
@@ -900,6 +900,7 @@ class SeverInterface:
                 action_dict = dict()
                 for ego_id in self.gym_env._ego_vehicle_dict.keys():
                     action_dict[ego_id] = message['content'][ego_id]
+                    # vx,vy,x,y,psi_rad
                 # 收集预测信息
                 prediction = message['content']['prediction']
                 # 执行环境步进，返回观测、奖励、完成状态、辅助信息
