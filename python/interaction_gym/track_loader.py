@@ -165,8 +165,7 @@ class DatasetLoader():
         
 # small_sclae dataset     
 class PredictionLoader():
-    def __init__(self, prediction_tracks_dir, gt_tracks_dir, ego_num, ego_max_length=5.5, eval=False):
-        self._prediction_tracks_dir = prediction_tracks_dir
+    def __init__(self, gt_tracks_dir, ego_max_length=5.5, ego_num=1, eval=False):
         self._gt_tracks_dir = gt_tracks_dir
         self._gt_csv_index = None
         self._eval = eval
@@ -175,12 +174,11 @@ class PredictionLoader():
         self._ego_num = ego_num
         self._possible_ego_dict = dict()
         self._possible_ego_id = []
-        
-        # 初始化数据相关属性
+
         self._data = None
         self.data_file = None
         
-        # 定义小数据集
+        # small_large数据集
         self.small_set_dict = {5: [29, 30, 33, 36, 37, 39, 40, 41]}
         
         # 初始化可能的ego车辆
@@ -193,11 +191,8 @@ class PredictionLoader():
     def _set_possible_ego_id_dict(self):
         for csv_index, vehicle_ids in self.small_set_dict.items():
             possible_ego_id = []
-            # 使用 csv_index 而不是 self._gt_csv_index
-            track_file_path = os.path.join(
-                self._gt_tracks_dir, 
-                "vehicle_tracks_" + str(csv_index).zfill(3) + ".csv"
-            )
+            # 用csv_index
+            track_file_path = os.path.join(self._gt_tracks_dir, "vehicle_tracks_" + str(csv_index).zfill(3) + ".csv")
             track_dict = read_tracks(track_file_path)
             
             for vehicle_id in vehicle_ids:
@@ -213,76 +208,7 @@ class PredictionLoader():
             # 初始化 self._gt_csv_index
             if self._gt_csv_index is None:
                 self._gt_csv_index = csv_index
-
-    def _get_possible_ego_id(self, track_dict):
-        vehicle_id_list = track_dict.keys()     # 车辆id  track key
-        possible_ego_id = []                    # 可能的ego车辆id
-        for vehicle_id in vehicle_id_list:      # 遍历车辆id
-            possible_ego_id.append(vehicle_id)  # ego id即为车辆id
-        return possible_ego_id
     
-    # train模式下，选择数据
-    def _select_data_train(self, file_name=None):
-        # extract data from prediction file
-        if not file_name:                                       # 如果未指定文件名
-            file_name = random.choice(self._prediciton_tracks)  # 随机选择文件，就是.pkl文件中随机选择一个
-        data_file = os.path.join(self._prediction_tracks_dir, file_name) # 构建文件路径 {root_dir}/prediction/{map_name}/xxxxx.pkl
-        with open(data_file, 'rb') as f:                        # 以二进制读取模式打开
-            data = pickle.load(f)                               # 使用pickle加载数据 data为转换后的pkl数据
-        self._possible_ego_id = self._get_possible_ego_id(data['egos_track']) # 获取ego车辆id
-        return data_file, data
-
-    # eval模式下，选择数据
-    def _select_data_eval(self, data_file, data, file_name=None):
-        if self._only_trouble: # false by default
-            # if current data exist and still have trouble cars
-            if self._ego_num == 1 and self._possible_ego_id: 
-                pass
-            # find next file which has trouble cars
-            else:
-                while True:
-                    if not file_name:
-                        file_name = self._prediciton_tracks[self._file_index]
-                    data_file = os.path.join(self._prediction_tracks_dir, file_name)
-                    with open(data_file, 'rb') as f:
-                        data = pickle.load(f)
-                    if data['gt_of_trouble']:
-                        self._possible_ego_id = self._get_possible_ego_id(data['gt_of_trouble'])
-                        break
-                    else:
-                        self._file_index += 1
-        elif self._eval: # false by default
-            if not data:
-                file_name = '5_45800_55800_33P0.pkl'
-                data_file = os.path.join(self._prediction_tracks_dir, file_name)
-                with open(data_file, 'rb') as f:
-                    data = pickle.load(f)
-            # select every ego in turn when evaluate policy
-            if not self._possible_ego_id:
-                self._possible_ego_id = self._get_possible_ego_id(data['egos_track'])
-
-                # self._possible_ego_id = [33,37,41]
-                # self._possible_ego_id = [36, 41]
-        
-        return data_file, data
-
-    # 获取ground truth数据的csv文件索引
-    def _get_gt_csv_index(self, data_file):
-        # get corresponding ground truth data from dataset
-        gt_csv_index = data_file[data_file.find('DR_USA_Intersection_EP0') + len('DR_USA_Intersection_EP0') + 1]
-        # 找到'DR_USA_Intersection_EP0'字符串在data_file的起始位置，然后加上字符串长度22，再加1，即为csv文件索引，换句话说就是得到DR_USA_Intersection_EP0_x中的x这个数字
-        return gt_csv_index
-    
-    # 从文件中提取数据
-    def _extract_data_from_files(self, file_name=None):
-        # when evaluate policy, select every possible (only trouble or all) ego in turn
-        if self._eval or self._only_trouble: # self._eval = False, self._only_trouble = False
-            self.data_file, self._data = self._select_data_eval(self.data_file, self._data, file_name)
-        else: # by default, train mode
-            self.data_file, self._data = self._select_data_train(file_name) # 选择训练数据 self._select_data_train(file_name='5_45800_55800_33P0.pkl')
-        # get ground truth data csv file index corresponding to the file, if we want to use gt data
-        self._gt_csv_index = self._get_gt_csv_index(self.data_file)
-
     def change_track_file(self):
         if not self._eval:
             if self._gt_csv_index is None:
@@ -318,7 +244,7 @@ class PredictionLoader():
         
         print("vdi_type",vdi_type)
         print("route_type",route_type)
-        print("in read_track_file_def, track_file_path: ",track_file_path) # /home/developer/workspace/interaction_gym/dataset/recorded_trackfiles/DR_USA_Intersection_EP0/vehicle_tracks_005.csv
+        print("in read_track_file_def, track_file_path: ", track_file_path) # /home/developer/workspace/interaction_gym/dataset/recorded_trackfiles/DR_USA_Intersection_EP0/vehicle_tracks_005.csv
         # print("in read_track_file_def, track_dick: ",track_dict)
         return track_dict
 

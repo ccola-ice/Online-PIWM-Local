@@ -61,9 +61,7 @@ class InteractionEnv:
         
         # load vehicle tracks
         if self._loader_type == 'prediction':
-            prediction_tracks_dir = os.path.join(root_dir, 'prediction', self._map_name) # prediction_tracks_dir = {root_dir}/prediction/{map_name}
-            self._track_loader = PredictionLoader(prediction_tracks_dir, groundtruth_tracks_dir, ego_num=1, ego_max_length=5.5, eval=self._eval)
-        
+            self._track_loader = PredictionLoader(groundtruth_tracks_dir, eval=self._eval)
         elif self._loader_type == 'dataset': 
             self._track_loader = DatasetLoader(groundtruth_tracks_dir, eval=self._eval)
         
