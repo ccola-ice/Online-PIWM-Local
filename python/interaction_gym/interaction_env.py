@@ -142,9 +142,8 @@ class InteractionEnv:
 
         # initialize controlled vehicles (ego and reactive vdis), and their routes to be followed
         self._start_end_state = self._map.controlled_vehicle_start_end_state_dict  # controlled vehicle start & end state dict, key = ego_id, value = (start_time,end_time,length,width,start motion_state,end motion_state)
-        if self._loader_type == 'small_scale' and self._route_type == 'predict':
-            route_dict = self._track_loader.get_ego_routes()
-        elif self._route_type == 'ground_truth':
+
+        if self._route_type == 'ground_truth':
             route_dict = self.get_ground_truth_route()
         elif self._route_type == 'centerline':
             route_dict = self.get_centerline_route()

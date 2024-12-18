@@ -300,19 +300,14 @@ class Observation:
             # get current ego route point and target speed
             ego_route_points = geometry.get_route_point_with_heading_from_point_list(self.ego_route_dict[ego_id], self.min_interval_distance)
             ego_route_target_speed = geometry.get_target_speed_from_point_list(self.ego_route_dict[ego_id])
-            if self.route_type == 'predict':
-                # do not need lane bound and distance if use predict route (for now)
-                self.ego_route_left_bound_points[ego_id], self.ego_route_right_bound_points[ego_id] = None, None
-                self.ego_closet_bound_points[ego_id], self.distance_from_bound[ego_id] = None, None
-                pass
-            elif self.route_type == 'ground_truth':
+
+            if self.route_type == 'ground_truth':
                 # get current lane bound and distance from lanelet
                 # self.ego_route_left_bound_points[ego_id], self.ego_route_right_bound_points[ego_id] = geometry.get_route_bounds_points(self.ego_route_lanelet_dict[ego_id], self.min_interval_distance)
                 # self.ego_closet_bound_points[ego_id], self.distance_from_bound[ego_id] = geometry.get_closet_bound_point(ego_state_dict['loc'], self.ego_route_left_bound_points[ego_id], self.ego_route_right_bound_points[ego_id])
                 pass
             elif self.route_type == 'centerline':
                 # ego_route_points = geometry.get_ego_route_point_with_heading_from_lanelet(route_lanelet, self.min_interval_distance)
-                
                 # get current lane bound and distance
                 # self.ego_route_left_bound_points[ego_id], self.ego_route_right_bound_points[ego_id] = geometry.get_route_bounds_points(route_lanelet, self.min_interval_distance)
                 # self.ego_closet_bound_points[ego_id], self.distance_from_bound[ego_id] = geometry.get_closet_bound_point(ego_state_dict['loc'], self.ego_route_left_bound_points[ego_id], self.ego_route_right_bound_points[ego_id])
