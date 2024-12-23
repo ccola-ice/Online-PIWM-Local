@@ -31,16 +31,12 @@ class Agent(nj.Module):
     self.act_space = act_space['action']
     self.step = step
 
-    # obs_space:{'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), ...}
-    # act_space:{'action': Space(dtype=float32, shape=(4,), low=0, high=1)}
-    # config:{}
     # create world model
     self.wm = WorldModel(obs_space, act_space, config, name='wm')
 
     # create actor and critic
     self.task_behavior = getattr(behaviors, config.task_behavior)(
         self.wm, self.act_space, self.config, name='task_behavior')
-    # expl_behavior is 'None' by default
     if config.expl_behavior == 'None':
       self.expl_behavior = self.task_behavior
     else:
@@ -64,19 +60,16 @@ class Agent(nj.Module):
     # sample a action from the actor
     # NOTE: obs for ego and vdi include id and traj state ---- currently dont know how to use id state
     embed_dict = self.wm.encoder(obs)
-    # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       post_dict, _ = self.wm.rssm.obs_step(
           prev_latent, prev_action, embed_dict, obs['is_first'], obs['should_init_vdi'], obs['should_init_vpi'], obs['mask_vdi'], obs['mask_vpi'])
     
     # for policy in branch sturture, we use ego_attention
-    # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       feats_dict = {k: v for k,v in post_dict.items()}
       feats_dict.update({'mask_vdi': obs['mask_vdi']})
       ego_attention_out, ego_attention_mat = self.wm.ego_attention(feats_dict)
-       
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       self.expl_behavior.policy(post_dict, expl_state, ego_attention_out)
       task_outs, task_state = self.task_behavior.policy(post_dict, task_state, ego_attention_out)
@@ -100,15 +93,8 @@ class Agent(nj.Module):
   def predictor(self, obs, state):
     self.config.jax.jit and print('Tracing trajectory pridictor (decoder) function.')
     obs = self.preprocess(obs)
-
     (post_dict, _), _, _ = state
     feats_dict = {k: v for k,v in post_dict.items()}
-    # feats_dict.update({
-    #                    'mask_vdi': obs['mask_vdi'],
-    #                    'mask_vpi': obs['mask_vpi']
-    #                    })
-    # predict_attention_out_dict, predict_attention_mat_dict = self.wm.predict_attention(feats_dict)
-    # prediciton_symlog_dist_dict = self.wm.heads['decoder'](feats_dict, predict_attention_out_dict)
     prediciton_symlog_dist_dict = self.wm.heads['decoder'](feats_dict)
     prediciton = {key: value.mode() for key, value in prediciton_symlog_dist_dict.items()}
     return prediciton
@@ -127,7 +113,7 @@ class Agent(nj.Module):
     # 3. get posterior model state, as the start state 
     # of imagine trajectory (for actor critic training), along with the data
     # TODO: in context, for data we only consider is_terminal like in dmv2, is that important?
-    # TODO: an elegant way to use different modules
+    
     context = {**wm_outs['post']} # context = {**data, **wm_outs['post']}
     aux_key_list = ['is_terminal', 'mask_vdi', 'mask_vpi'] if self.config.task in ['interaction_prediction', 'interaction_branch'] else ['is_terminal']
     for key in aux_key_list:
@@ -181,23 +167,15 @@ class Agent(nj.Module):
 class WorldModel(nj.Module):
 
   def __init__(self, obs_space, act_space, config):
-    self.obs_space = obs_space # 
-    self.act_space = act_space['action'] # 
-    self.config = config # 
+    self.obs_space = obs_space 
+    self.act_space = act_space['action'] 
+    self.config = config 
     shapes = {k: tuple(v.shape) for k, v in obs_space.items()} # 观测空间字典的值转换成tuple
     shapes = {k: v for k, v in shapes.items() if not k.startswith('log_')} # 去掉以log_开头的key
     
-    # intialize modules of the world model
-    # TODO: an elegant way to use different modules
+    # intialize modules of the world model    
     if self.config.task == 'interaction_prediction':
-      # 初始化PIWMEncoder，对应论文的共享轨迹编码器和分支编码器
-      # encoder for drive trajectories and map information
-      # self.encoder._traj_mlp  = xxx编码器(MLP)
-      # self.encoder._ego_mlp   = xxx编码器(MLP)
-      # self.encoder._vdi_mlp   = xxx编码器(MLP)
-      # self.encoder._vpi_mlp = xxx编码器(MLP)
       self.encoder = nets_PIWM.PIWMEncoder(shapes, **config.encoder, name='enc')
-      # 初始化PredictAttention，对应论文的self-attention模块
       # attention modules which are used in different heads
       self.predict_attention = nets_PIWM.PredictAttention((), **config.attention, name='pred_attention')
       # recurrent state space model, modified for branch structure
@@ -219,7 +197,6 @@ class WorldModel(nj.Module):
     image, vector = scales.pop('image'), scales.pop('vector')
     scales.update({k: image for k in self.heads['decoder'].cnn_shapes})
     
-    # TODO: an elegant way to ...
     if self.config.task == 'interaction_prediction':
       # the prediction loss for different vdis is summed up to show
       for k in self.heads['decoder'].mlp_shapes:
@@ -237,7 +214,7 @@ class WorldModel(nj.Module):
     return prev_latent, prev_action
 
   def train(self, data, state):
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       # encoder, rssm, predict_attention for future prediction, ego_attention for decision and reward predict, decoder, reward, cont
       modules = [self.encoder, self.rssm, self.predict_attention, self.ego_attention, *self.heads.values()] 
@@ -261,7 +238,6 @@ class WorldModel(nj.Module):
     prev_actions = jnp.concatenate([
         prev_action[:, None], data['action'][:, :-1]], 1)
     
-    # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       post_dict, prior_dict = self.rssm.observe(
           embed_dict, prev_actions, data['is_first'], data['should_init_vdi'], data['should_init_vpi'], data['mask_vdi'], data['mask_vpi'], prev_latent)
@@ -272,8 +248,7 @@ class WorldModel(nj.Module):
     # for key, embed in embed_dict.items():
     #   feats_dict[key].update({'embed': embed})
     feats_dict = {k: v for k,v in post_dict.items()}
-        
-    # TODO: an elegant way to use different modules
+    
     # get agent to agent attention
     if self.config.task == 'interaction_prediction':
       feats_dict.update({
@@ -287,7 +262,7 @@ class WorldModel(nj.Module):
     # TODO: use feats_dict or post_dict? seems like post_dict is enough
     dists = {}
     for name, head in self.heads.items():
-      # TODO: an elegant way to use different modules
+      
       if self.config.task == 'interaction_prediction':
         if name in ['decoder']:
           out = head(feats_dict if name in self.config.grad_heads else sg(feats_dict))
@@ -298,7 +273,7 @@ class WorldModel(nj.Module):
 
     # calculate loss, for losses related to vdi, we sum them up
     losses = {}
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       # dyn and rep loss
       losses['dyn'] = self.rssm.dyn_loss(post_dict, prior_dict, data['mask_vdi'], data['mask_vpi'], **self.config.dyn_loss)
@@ -340,7 +315,6 @@ class WorldModel(nj.Module):
     
     # TODO: what is last state (dict) for?
     last_state_dict = {}
-    # TODO: an elegant way...
     if self.config.task == 'interaction_prediction':
       for key, key_dict in post_dict.items():
         last_state_dict[key] = {k: v[:, -1] for k, v in key_dict.items()}
@@ -359,7 +333,7 @@ class WorldModel(nj.Module):
     start_dict = {k: v for k, v in start.items() if k in keys}
     
     # NOTE: the mask of vdi and vpi is unchanged during imagination (i.e the number of vdi and vpi is fixed)
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       # update mask for attention
       feats_dict = {k: v for k,v in start_dict.items()}
@@ -379,7 +353,7 @@ class WorldModel(nj.Module):
     # generate imagined trajetories using world model to train the actor and critc
     def step(prev, _):
       prev = prev.copy() # prev is prev prior_dict(or start_dict in the first step) plus action
-      # TODO: an elegant way to use different modules
+      
       if self.config.task == 'interaction_prediction':
         prior_dict, _ = self.rssm.img_step(prev, prev.pop('action'), start['mask_vdi'], start['mask_vpi'])
         feats_dict = {k: v for k,v in prior_dict.items()}
@@ -401,14 +375,14 @@ class WorldModel(nj.Module):
 
     # concat first ground truth state (from data) and 15 (imagine horizen) imagined state
     traj_concat = {}
-    # TODO: an elegant way...
+    
     if self.config.task == 'interaction_prediction':
       # for branch struchture
       for k, v in traj.items():
         traj_concat.update({k: {veh: jnp.concatenate([start_dict[k][veh][None], v[veh]], 0) for veh in v.keys()}} if isinstance(v, dict) else {k: jnp.concatenate([start_dict[k][None], v], 0)})
 
     # pridict ends or not for each imagined state and calculate discount weight for these states
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       cont = self.heads['cont'](traj_concat, traj_concat['attention']).mode()
     
@@ -477,8 +451,7 @@ class ImagActorCritic(nj.Module):
     self.config = config
     disc = act_space.discrete
     self.grad = config.actor_grad_disc if disc else config.actor_grad_cont
-
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       self.actor = nets_PIWM.PIWMMLP(
           name='actor', dims='deter', shape=act_space.shape, **config.actor,
@@ -494,7 +467,7 @@ class ImagActorCritic(nj.Module):
     return {}
 
   def policy(self, state, carry, attention=None):
-    # TODO: an elegant way to use different modules
+    
     # TODO: is this for eval only?
     if self.config.task == 'interaction_prediction':
       action = self.actor(state, attention)
@@ -504,7 +477,7 @@ class ImagActorCritic(nj.Module):
 
   def train(self, imagine, start, context):
     def loss(start):
-      # TODO: an elegant way to...
+      
       if self.config.task == 'interaction_prediction':
         # NOTE: grad pass through ego_attention module in actor and critic
         # ego attention itself as a part of a-c is trained during imagination, 
@@ -540,7 +513,7 @@ class ImagActorCritic(nj.Module):
       metrics.update(jaxutils.tensorstats(normed_ret, f'{key}_return_normed'))
       metrics[f'{key}_return_rate'] = (jnp.abs(ret) >= 0.5).mean()
     adv = jnp.stack(advs).sum(0)
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       # NOTE: grad pass through ego_attention module in actor and critic and not back propagated to the vpi parts of world model
       policy = self.actor(sg(traj), traj['attention'])
@@ -577,7 +550,7 @@ class VFunction(nj.Module):
     self.rewfn = rewfn
     self.config = config
     # v net and its slow update target net
-    # TODO: an elegant way to use different modules
+    
     if self.config.task == 'interaction_prediction':
       self.net = nets_PIWM.PIWMMLP((), name='net', dims='deter', **self.config.critic)
       self.slow = nets_PIWM.PIWMMLP((), name='slow', dims='deter', **self.config.critic)
@@ -603,8 +576,8 @@ class VFunction(nj.Module):
     traj_slide = {}
     for k, v in traj.items():
       traj_slide.update({k: {k2: v2[:-1] for k2, v2 in v.items()}} if isinstance(v, dict) else {k: v[:-1]})
+    
     # get value predictions
-    # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       v_dist = self.net(traj_slide, traj_slide['attention'])
       slow_dist = self.slow(traj_slide, traj_slide['attention'])
@@ -628,7 +601,6 @@ class VFunction(nj.Module):
 
   def score(self, traj, actor=None):
     # using reward head from world model to calculate reward for imagined trajectory
-    # TODO: an elegant way to use different modules
     if self.config.task == 'interaction_prediction':
       rew = self.rewfn(traj, traj['attention'])
       value = self.net(traj, traj['attention']).mean()

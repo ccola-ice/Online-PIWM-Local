@@ -11,7 +11,6 @@ from . import jaxutils
 class Greedy(nj.Module):
 
   def __init__(self, wm, act_space, config):
-    # TODO: an elegant way...
     # define reward function (sample mean)
     if config.task == 'interaction_prediction':
       rewfn = lambda s, att: wm.heads['reward'](s, att).mean()[1:]
@@ -28,7 +27,6 @@ class Greedy(nj.Module):
   def initial(self, batch_size):
     return self.ac.initial(batch_size)
 
-  # TODO: an elegant way...
   def policy(self, latent, state, attention=None):
     return self.ac.policy(latent, state, attention)
 

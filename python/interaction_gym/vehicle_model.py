@@ -162,7 +162,6 @@ class ControlledVehicle:
         self.update_action(acc_norm, steering_norm)
 
         return self._current_state, self._action_for_current_state
-
         
 class VehiclePIDController(object):
     def __init__(self, args_lateral, args_longitudinal, jerk_threshold=None, offset=0):

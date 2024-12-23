@@ -25,7 +25,7 @@ class PIWMRSSM(nj.Module):
     # multi heads of rssm(ego, vdi_1...vdi_n, vpi_1....vpi_n)
     rssm_included = [k for k in shapes.keys() if k.startswith(('ego', 'vdi', 'vpi')) and 'prediction' not in k]
     self._keys = [k for k in shapes.keys() if k in rssm_included]
-    print('RSSM keys:', self._keys) # TODO:RSSM keys ?
+    # print('RSSM keys:', self._keys) # TODO:RSSM keys ?
 
     # prediction attention network for merging vehicles' feature
     self._pred_attention = pred_attention # self-attention module, consider vehicles' interactive features when preducing z
@@ -50,13 +50,9 @@ class PIWMRSSM(nj.Module):
     return state_dict
   
   def _get_post(self, key, prior, pred_attention, embed):
-    # 获取对应的前缀(ego/vdi/vpi)
     prefix = 'ego' if key.startswith('ego') else 'vdi' if key.startswith('vdi_') else 'vpi'
-    # 特征拼接
     x = jnp.concatenate([prior['deter'], pred_attention, embed], -1)
-    # 获取观测输出
     x = self.get(f'{prefix}_obs_out', Linear, **self._kw)(x)
-    # 获取后验分布
     stats = self._stats(f'{prefix}_obs_stats', x)
     dist = self.get_dist(stats)
     stoch = dist.sample(seed=nj.rng())
@@ -71,12 +67,9 @@ class PIWMRSSM(nj.Module):
     # swap: change x shape from (16, 64, xx) to (64, 16, xx) (or from (64, 16, xx) to (16, 64, xx))
     # TODO: notice for obs_step, the start is state_dict, not tuple(state_dict, state_dict), figure out why it works like this
     step = lambda prev, inputs: self.obs_step(prev[0], *inputs)
-    # 对所有的输入交换前两个维度，使其变为(64, 16, xx)
     inputs = self._swap(action), self._swap(embed), self._swap(is_first), self._swap(should_init_vdi), self._swap(should_init_vpi), self._swap(mask_vdi), self._swap(mask_vpi)
     start = state_dict, state_dict
 
-    # 从 start 开始，按顺序将 inputs 的每个时间步输入到 step 函数，就是obs_step中。
-    # post_dict 和 prior_dict 收集所有时间步的前验和后验状态。
     post_dict, prior_dict = jaxutils.scan(step, inputs, start, self._unroll)
 
     # swap it back to the original shape (64, 16, xx)
@@ -94,43 +87,32 @@ class PIWMRSSM(nj.Module):
     # swap it back to the original shape (64, 16, xx)
     prior_dict = {k: self._swap(v) for k, v in prior_dict.items()}
     return prior_dict
-
-  # 进行一个观测步训练
-  # 输入：前一个状态h(t-1)，前一个动作a(t-1)，嵌入字典e(t)，是否为第一帧，是否初始化vdi，是否初始化vpi，vdi掩码，vpi掩码
-  # 输出：z_t z_t_head
+  
   def obs_step(self, prev_state, prev_action, embed_dict, is_first, should_init_vdi, should_init_vpi, mask_vdi, mask_vpi):
        
     # change data type
     is_first = cast(is_first)
     prev_action = cast(prev_action)
-    
-    # action clip 动作剪枝
+   
     if self._action_clip > 0.0:
       prev_action *= sg(self._action_clip / jnp.maximum(self._action_clip, jnp.abs(prev_action)))
-    # self._action_clip / jnp.maximum(self._action_clip, jnp.abs(prev_action)) : 缩放因子
-    # sg:停止梯度传播，确保剪枝操作不影响反向传播。
   
     # intialize latent state for first frame
     prev_state, prev_action = jax.tree_util.tree_map(
         lambda x: self._mask(x, 1.0 - is_first), (prev_state, prev_action))
     # if is first frame, than state and action is set to 0, else keep it as it is
-    # 使用 jax.tree_util.tree_map 对 prev_state 和 prev_action 进行掩码处理：
-    # 如果是第一帧，则使用 prev_state = self._mask(prev_state, 1.0 - 1.0); prev_action = self._mask(prev_action, 1.0 - 1.0) 对状态和动作进行掩码处理。
-    # 如果不是第一帧，则为 prev_state = self._mask(prev_state, 1.0 - 0.0); prev_action = self._mask(prev_action, 1.0 - 0.0)。相当于维持不变。
 
     prev_state = jax.tree_util.tree_map(
         lambda x, y: x + self._mask(y, is_first), prev_state, self.initial(len(is_first)))
     # for state in first frame is then initialized by the rssm
-    # 同理，如果是第一帧，则为prev_state = prev_state + self._mask(self.initial(len(is_first)),1.0)
-    # 如果不是第一帧，   则为prev_state = prev_state + self._mask(self.initial(len(is_first)),0.0)
 
     # initialize latent state for new or zero-padded(masked) vdis/vpis
     # TODO: initial muilple times when is_first is True, waste of calculation
-    should_init_vdi, should_init_vpi = cast(should_init_vdi), cast(should_init_vpi) #should_init_vdi:(16,5) should_init_vpi:(16,5)
+    should_init_vdi, should_init_vpi = cast(should_init_vdi), cast(should_init_vpi)
     for key in prev_state.keys():
       if key.startswith('vdi_'):
-        vdi_index = int(key.split('_')[-1]) # vdi_index:1
-        should_init = should_init_vdi[:, vdi_index - 1] # should_init:(float16[16])
+        vdi_index = int(key.split('_')[-1])
+        should_init = should_init_vdi[:, vdi_index - 1]
         # for vdis who are new to the observation, set its state to 0 first
         zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key]) # zero_paded_state = self._mask(prev_state['vdi_1'], 1.0 - should_init)
         # and then initialize it using rssm initial function
@@ -140,14 +122,12 @@ class PIWMRSSM(nj.Module):
         should_init = should_init_vpi[:, vpi_index - 1]
         zero_paded_state = jax.tree_util.tree_map(lambda x: self._mask(x, 1.0 - should_init), prev_state[key])
         prev_state[key] = jax.tree_util.tree_map(lambda x, y: x + self._mask(y, should_init), zero_paded_state, self._initial_single_state(key, len(should_init)))
-    
-    # 计算当前的先验状态并预测注意力值
+
     # get prior ^z(t)
     prior_dict, pred_attention_dict = self.img_step(prev_state, prev_action, mask_vdi, mask_vpi)
     
     post_dict = {}# 
     # different branches
-    # TODO: merge codes below
     for key in prior_dict.keys():
       if key.startswith(('ego', 'vdi_', 'vpi_')):
         prior = prior_dict[key]
@@ -162,7 +142,6 @@ class PIWMRSSM(nj.Module):
     return cast(post_dict), cast(prior_dict) 
   
   def img_step(self, prev_state_dict, prev_action, mask_vdi, mask_vpi):
-    # 输入
     # change data type
     prev_action = cast(prev_action)
     # action clip
@@ -171,16 +150,10 @@ class PIWMRSSM(nj.Module):
           self._action_clip, jnp.abs(prev_action)))
 
     def process_prior(self, key, feats_dict, pred_attention_dict, deter_dict):
-      # 获取前缀(ego/vdi/vpi)
       prefix = key.split('_')[0] if '_' in key else key
-      
-      # 拼接特征和注意力
       x = jnp.concatenate([feats_dict[key], pred_attention_dict[key]], -1)
-      # 使用对应前缀的网络组件
       x = self.get(f'{prefix}_img_out', Linear, **self._kw)(x)
       stats = self._stats(f'{prefix}_img_stats', x)
-      
-      # 采样和构建prior
       dist = self.get_dist(stats)
       stoch = dist.sample(seed=nj.rng())
       
@@ -196,23 +169,20 @@ class PIWMRSSM(nj.Module):
       if key.startswith(('ego', 'vdi_', 'vpi_')):
         prev_stoch = prev_state_dict[key]['stoch']
         deter = prev_state_dict[key]['deter']
-        
-        # reshape处理
+
         if self._classes:
           shape = prev_stoch.shape[:-2] + (self._stoch * self._classes,)
           prev_stoch = prev_stoch.reshape(shape)
         if len(prev_action.shape) > len(prev_stoch.shape):
           shape = prev_action.shape[:-2] + (np.prod(prev_action.shape[-2:]),)
           prev_action = prev_action.reshape(shape)
-        
-        # GRU处理
+
         prefix = key.split('_')[0] if '_' in key else key
         x = jnp.concatenate([prev_stoch, prev_action], -1)
         x = self.get(f'{prefix}_img_in', Linear, **self._kw)(x)
         x, deter = self._gru(f'{prefix}_gru', x, deter)
         deter_dict[key] = {'out': x, 'deter': deter}
 
-    # 计算attention
     feats_dict = {k: v['out'] for k,v in deter_dict.items()}
     feats_dict.update({
         'mask_vdi': mask_vdi,
@@ -220,7 +190,6 @@ class PIWMRSSM(nj.Module):
     })
     pred_attention_dict, pred_attention_dict_post, _ = self._pred_attention(feats_dict)
 
-    # 计算prior
     prior_dict = {}
     for key in feats_dict.keys():
         if key.startswith(('ego', 'vdi_', 'vpi_')):
@@ -232,14 +201,14 @@ class PIWMRSSM(nj.Module):
   # gets distribution from network outputs
   def get_dist(self, state, argmax=False):
     if self._classes: # 32
-      logit = state['logit'].astype(f32) # Traced<ShapedArray(float32[16,16,16])>with<DynamicJaxprTrace(level=1/0)>
-      return tfd.Independent(jaxutils.OneHotDist(logit), 1) # 根据logit创建一个OneHot分布,然后再包装为独立分布，独立分布的维度为1
+      logit = state['logit'].astype(f32)
+      return tfd.Independent(jaxutils.OneHotDist(logit), 1)
     else:
       mean = state['mean'].astype(f32)
       std = state['std'].astype(f32)
       return tfp.MultivariateNormalDiag(mean, std)
   
-  # # gets initial distribution from network outputs
+  # gets initial distribution from network outputs
   def _get_stoch(self, key, deter, attention=None, weight='shared'):
     if weight == 'shared':
       x = jnp.concatenate([deter, attention], -1) if attention is not None else deter
@@ -266,11 +235,11 @@ class PIWMRSSM(nj.Module):
   
   def _initial_single_state(self, key, batch_size):
     # discrete or continuous latent space
-    if self._classes: # 32
+    if self._classes:
       state = dict(
-          deter=jnp.zeros([batch_size, self._deter], f32), # 16 * 200
-          logit=jnp.zeros([batch_size, self._stoch, self._classes], f32), # 16 * 32 * 32
-          stoch=jnp.zeros([batch_size, self._stoch, self._classes], f32)) # 16 * 32 * 32
+          deter=jnp.zeros([batch_size, self._deter], f32),
+          logit=jnp.zeros([batch_size, self._stoch, self._classes], f32),
+          stoch=jnp.zeros([batch_size, self._stoch, self._classes], f32))
     else:
       state = dict(
           deter=jnp.zeros([batch_size, self._deter], f32),
@@ -294,43 +263,29 @@ class PIWMRSSM(nj.Module):
     return state
   
   # gru cell
-  # input:  x: z(t-1), deter: h(t-1), 
-  # output: h(t)
-  def _gru(self, name, x, deter):     # inputs is MLP(z+a), state is h
+  def _gru(self, name, x, deter):
     kw = {**self._kw, 'act': 'none', 'units': 3 * self._deter}
-    # kw = {kw, 激活函数none, 神经网络单元数：3*1024 = 3072}
-    x = jnp.concatenate([deter, x], -1) # concat MLP(z+a) and h
-    # GRU contains 3 parts -- r, z, h(t-1)'(=cond now)
-    
+    x = jnp.concatenate([deter, x], -1)
     x = self.get(name, Linear, **kw)(x)
 
     # GRU reset progress 
-    # reset,cand,update相当于互相等价的三个元素，初始值相同
-    reset, cand, update = jnp.split(x, 3, -1)  # reset:(batch_size, feature_dim) cand:(batch_size, feature_dim) update:(batch_size, feature_dim) 
-    reset = jax.nn.sigmoid(reset) # 获得充值门的输出
-    cand = jnp.tanh(reset * cand) # 获得候选隐状态值，充值门和h(t-1)相乘，再经过tanh激活函数
-    update = jax.nn.sigmoid(update - 1) # 获得更新门的输出，更新门的输出减1后经过sigmoid激活函数
+    reset, cand, update = jnp.split(x, 3, -1)
+    reset = jax.nn.sigmoid(reset)
+    cand = jnp.tanh(reset * cand)
+    update = jax.nn.sigmoid(update - 1)
 
     # GRU update progress
-    deter = update * cand + (1 - update) * deter # 获得ht输出
+    deter = update * cand + (1 - update) * deter
     return deter, deter
 
-  # 输入: name,x。name是层的名称，x是输入的张量
-  # 输出：对数变换后的logit概率分布
   def _stats(self, name, x):
     if self._classes: 
-      # self._stoch * self._classes = 16 * 16 = 256.
-      # x输入：(16,200)
       x = self.get(name, Linear, self._stoch * self._classes)(x)
-      # x输出：(16,256)
-      logit = x.reshape(x.shape[:-1] + (self._stoch, self._classes)) # 把x重塑成(16,16,16),输出给shape
-      if self._unimix: # mix of 1% uniform + 99% network output
-        # 在logit的最后一个维度即self._classes维度上进行softmax归一化计算
-        # probs输出对应的类别的概率
-        probs = jax.nn.softmax(logit, -1) # 对logits最后一个维度进行softmax变换
-        uniform = jnp.ones_like(probs) / probs.shape[-1] # 形状与probs相同的全1张量除以16 # uniform是用一个与probs形状相同的全1张量除以probs最后一个维度的大小，换句话说uniform的每个元素值都是1/16 
-        probs = (1 - self._unimix) * probs + self._unimix * uniform # 用 (1-unimix) * net out + unimix * random 更新prob输出
-        # 对数变换
+      logit = x.reshape(x.shape[:-1] + (self._stoch, self._classes))
+      if self._unimix: 
+        probs = jax.nn.softmax(logit, -1)
+        uniform = jnp.ones_like(probs) / probs.shape[-1]
+        probs = (1 - self._unimix) * probs + self._unimix * uniform
         logit = jnp.log(probs)
       stats = {'logit': logit}
       return stats
@@ -340,14 +295,9 @@ class PIWMRSSM(nj.Module):
       std = 2 * jax.nn.sigmoid(std / 2) + 0.1
       return {'mean': mean, 'std': std}
 
-  # 通过 jnp.einsum 按批次维度对 value 和 mask 进行对应元素相乘，实现了高效的掩码操作。
-  # 逐批次样本的掩码, 对于每个批次 b，value[b]将乘以mask[b]。
-  # value，需要进行掩码操作的数据，形状(batch_size, ...)
-  # mask，每个批次样本的掩码值，   形状(batch_size,)的一维张量
   def _mask(self, value, mask):
     return jnp.einsum('b...,b->b...', value, mask.astype(value.dtype))
 
-  # 交换输入张量的前两个维度。如果输入是一个字典，则对字典中的每个值执行同样的操作。将批次维度和时间维度互换
   def _swap(self, input):
     swap = lambda x: x.transpose([1, 0] + list(range(2, len(x.shape))))
     if isinstance(input, dict):
@@ -434,8 +384,7 @@ class PIWMRSSM(nj.Module):
 
 
 class PIWMEncoder(nj.Module):
-  
-  # 根据输入数据的形状和类型，初始化编码器模块CNN或MLP
+
   def __init__(
       self, shapes, cnn_keys=r'.*', mlp_keys=r'.*', mlp_layers=4,
       mlp_units=512, cnn='resize', cnn_depth=48,
@@ -443,20 +392,15 @@ class PIWMEncoder(nj.Module):
       symlog_inputs=False, minres=4, **kw):
     
     excluded = ('is_first', 'is_last')
-    
-    # 初始形状过滤 
-    shapes = {k: v for k, v in shapes.items() if (k not in excluded and not k.startswith('log_') and not k.endswith('_prediction'))}
-    # 过滤条件：不在 excluded 列表中、不以 'log_' 开头、不以 '_prediction' 结尾
 
-    # CNN形状提取，键值的长度为3，图像(height,width,depth)，且键名匹配CNN形状(正则表达式cnn_keys)
+    shapes = {k: v for k, v in shapes.items() if (k not in excluded and not k.startswith('log_') and not k.endswith('_prediction'))}
+
     self.cnn_shapes = {k: v for k, v in shapes.items() if (
-        len(v) == 3 and re.match(cnn_keys, k))} # 注意，v的值是shapes.items()中值的元组，其含义是形状，那么v的长度为3，表示这个形状有三项，一般表示是图像数据
+        len(v) == 3 and re.match(cnn_keys, k))}
     
-    # MLP形状提取，键值的长度为1或2，(向量或序列数据)，且键名匹配MLP形状(正则表达式mlp_keys)
     self.mlp_shapes = {k: v for k, v in shapes.items() if (
         len(v) in (1, 2) and re.match(mlp_keys, k))}
-    
-    # 合并二者形状
+
     self.shapes = {**self.cnn_shapes, **self.mlp_shapes} 
     print('Encoder CNN shapes:', self.cnn_shapes)
     print('Encoder MLP shapes:', self.mlp_shapes)
@@ -464,25 +408,21 @@ class PIWMEncoder(nj.Module):
     # cnn layers, cnn shape = {} 
     # kw = {'act': 'silu', 'norm': 'layer', 'winit': 'normal', 'fan': 'avg'}
     cnn_kw = {**kw, 'minres': minres, 'name': 'cnn'} # cnn_kw = {'act': 'silu', 'norm': 'layer', 'winit': 'normal', 'fan': 'avg', 'minres': 4, 'name': 'cnn'}
-    if self.cnn_shapes: # 如果有CNN输入
+    if self.cnn_shapes:
       if cnn == 'resnet':
-        self._cnn = ImageEncoderResnet(cnn_depth, cnn_blocks, resize, **cnn_kw) # Resnet处理图像输入
+        self._cnn = ImageEncoderResnet(cnn_depth, cnn_blocks, resize, **cnn_kw)
       else:
         raise NotImplementedError(cnn)
 
     # mlp layers, 2 shared layers for trajectory and 2 layers for each branch
-    if self.mlp_shapes: # 如果有MLP输入
+    if self.mlp_shapes:
       # vehicle info
       enc_mlp_layer = int(mlp_layers / 2) # 2
 
       # encode trajectory using the same mlp
-      # 初始化共享轨迹编码器，提取轨迹特征，对应论文中的shared trajectory encoder，用于编码轨迹信息，由两层MLP组成
-      # shape = None, layers = 2, units = 512(输出层特征维度), dist = 'none'(直接输出特征信息，不采取概率分布), symlog_inputs = False(不进行对数变换), name = 'traj_mlp'
       self._traj_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=symlog_inputs, name='traj_mlp')
-      # self._traj_mlp = MLP():实例化MLP类，同时初始化
 
       # for ego, vdi and vpi features, using different mlp
-      # 分别定义ego、vdi和vpi的MLP编码器，对应论文中的ego、vpi和vdi，每个编码器由两层MLP组成
       self._ego_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='ego_mlp')
       self._vdi_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='vdi_mlp')
       self._vpi_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=False, name='vpi_mlp')
@@ -490,10 +430,8 @@ class PIWMEncoder(nj.Module):
       # TODO: map info
       # self._map_mlp = MLP(None, enc_mlp_layer, mlp_units, dist='none', **kw, symlog_inputs=symlog_inputs, name='map_mlp')
 
-  # 前向传播
   def __call__(self, data):
-
-    # 1.数据重塑
+  
     # to get batch dims, and reshape the data 
     some_key, some_shape = list(self.shapes.items())[0]
     batch_dims = data[some_key].shape[:-len(some_shape)]
@@ -503,7 +441,6 @@ class PIWMEncoder(nj.Module):
 
     outputs_dict = {}
 
-    # 2.处理CNN输入(图像)
     # for image inputs
     if self.cnn_shapes:
       inputs = jnp.concatenate([data[k] for k in self.cnn_shapes], -1)# 将CNN数据在最后一个维度拼接，合并成一个输入
@@ -511,20 +448,19 @@ class PIWMEncoder(nj.Module):
       output = output.reshape((output.shape[0], -1)) # 将CNN输出展开成二维向量
       outputs_dict.update({'cnn': output}) # 更新输出字典
 
-    # 3.处理(向量/地图)输入
     # for vector inputs (vehicle and map)
     if self.mlp_shapes:
-      for key in self.mlp_shapes: # 遍历向量(mlp_shapes)输入
-        ob = jaxutils.cast_to_compute(data[key].astype(f32)) # 对要处理的输入数据类型转换
-        if key.startswith(('ego', 'vdi_', 'vpi_')): # 筛选ego、vdi和vpi的MLP编码器
-          traj_features = self._traj_mlp(ob) # 获取共享轨迹编码器的输出特征
-          traj_features = traj_features.reshape((traj_features.shape[0], -1)) #重塑形状 output shape: (batch_size, 512)
+      for key in self.mlp_shapes:
+        ob = jaxutils.cast_to_compute(data[key].astype(f32))
+        if key.startswith(('ego', 'vdi_', 'vpi_')):
+          traj_features = self._traj_mlp(ob)
+          traj_features = traj_features.reshape((traj_features.shape[0], -1))
           if key.startswith('ego'):
-            features = self._ego_mlp(traj_features)   # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_ego
+            features = self._ego_mlp(traj_features)
           elif key.startswith('vdi_'):
-            features = self._vdi_mlp(traj_features)   # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_vdi
+            features = self._vdi_mlp(traj_features)
           elif key.startswith('vpi_'):
-            features = self._vpi_mlp(traj_features) # 在共享轨迹编码器之后，再分别输入到对应的MLP中，et_vpi
+            features = self._vpi_mlp(traj_features)
         else:
           # features = self._map_mlp(ob)
           pass
@@ -547,7 +483,6 @@ def multi_head_attention(q, k, v, mask, drop_out=0.1):
 
   return out, attention
 
-# 多头自注意力机制的实现，对应论文PIWM中的Self-Attention
 class PredictAttention(nj.Module):
   # self-attention, produce ego and vdi's attention value for future prediciton task
   def __init__(
@@ -571,71 +506,48 @@ class PredictAttention(nj.Module):
         'dist', 'outscale', 'minstd', 'maxstd', 'outnorm', 'unimix', 'bins')
     self._dense = {k: v for k, v in kw.items() if k not in distkeys}
     self._dist = {k: v for k, v in kw.items() if k in distkeys}
-    self.out_dim = self._heads * self._units_per_head # 输出维度：注意力头数量 × 每个头的特征维度
-  
-  # 处理ego与vdi和vpi的特征
+    self.out_dim = self._heads * self._units_per_head
+
   def __call__(self, inputs_dict):
-    # 1.输入预处理
     # preprocess inputs
-    # feature_dict = {key: self._inputs(value) for key, value in inputs_dict.items() if isinstance(value, dict)}
-    feature_dict = {key: value for key, value in inputs_dict.items() if key.startswith(('ego', 'vdi_', 'vpi_'))} # 筛选保留inputs_dict中的以ego、vdi_和vpi_开头的键值对
-    if self._symlog_inputs: # 是否对数变换
+    feature_dict = {key: value for key, value in inputs_dict.items() if key.startswith(('ego', 'vdi_', 'vpi_'))}
+    if self._symlog_inputs:
       feature_dict = {key: jaxutils.symlog(value) for key, value in feature_dict.items()}
-    
-    # 2.特征拼接
     # use attention mechanism to fuse ego and vdi features together
     vdi_mask = inputs_dict['mask_vdi']
     vdi_num = vdi_mask.shape[-1]
     vpi_mask = inputs_dict['mask_vpi']
     vpi_num = vpi_mask.shape[-1]
     # concat ego and vdi features together in entity dimension
-    # 将feature_dict中的所有value在倒数第2个i位置新插入一个新维度，比如，value原来的维度是2*3(2,3)的数组，新的就变成 2*1*3(2,1,3)
     feature_dict = {key: jnp.expand_dims(value, axis=-2) for key, value in feature_dict.items()} # add entity dimension
-
-    # 拼接ego与vdi和vpi车辆的特征
-    # 特征拼接，ego与vdi和vpi车辆的特征
     # vehicle_features_q = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)], axis=-2)
     vehicle_features_q = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)] + [feature_dict[f'vpi_{i+1}'] for i in range(vpi_num)], axis=-2)
     vehicle_features_kv = jnp.concatenate([feature_dict['ego']] + [feature_dict[f'vdi_{i+1}'] for i in range(vdi_num)] + [feature_dict[f'vpi_{i+1}'] for i in range(vpi_num)], axis=-2)
-    # vehicle_features_q的shape: (16,11,200)
-    # vehicle_features_kv的shape: (16,11,200)  
-    
-    # 3.特征变换
-    q_x = jaxutils.cast_to_compute(vehicle_features_q)    # 数据类型转换 
-    kv_x = jaxutils.cast_to_compute(vehicle_features_kv)  # 数据类型转换
+
+    q_x = jaxutils.cast_to_compute(vehicle_features_q)
+    kv_x = jaxutils.cast_to_compute(vehicle_features_kv)
     # attention
     # Dimensions: Batch*Length, entity, head, feature_per_head
-    # q = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(q_x).reshape([-1, 1 + vdi_num, self._heads, self._units_per_head])
     q = self.get('query', Linear, units=self._heads*self._units_per_head, **self._dense)(q_x).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
-    # 获取名为'query'的Linear层，输入是q_x，输出维度为heads * units_per_head = 400(即units数)，然后将输出reshape成[-1, 11, 2, 200]的形状，赋值给q [-1,11,2,200]表示的就是[batch_size,实体数量,注意力头的数量、每个头的特征维度]
     k = self.get('key', Linear, units=self._heads*self._units_per_head, **self._dense)(kv_x).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
-    # 获取名为'key'的Linear层，输入是kv_x，输出维度为heads * units_per_head = 400，然后将输出reshape成[-1, 11, 2, 200]的形状，赋值给k
     v = self.get('value', Linear, units=self._heads*self._units_per_head, **self._dense)(kv_x).reshape([-1, 1 + vdi_num + vpi_num, self._heads, self._units_per_head])
-    # 获取名为'value'的Linear层，输入是kv_x，输出维度为heads * units_per_head = 400，然后将输出reshape成[-1, 11, 2, 200]的形状，赋值给v
-    # q,k,v的shape均为(16,11,2,200)
 
-    # 4.维度变换
     # Dimensions: Batch*Length, head, entity, feature_per_head
-    q = q.transpose(0,2,1,3) # 交换第2和第3个维度，即将实体数量和注意力头的数量交换，变成[batch_size,2,11,200]
-    k = k.transpose(0,2,1,3) # 同上
-    v = v.transpose(0,2,1,3) # 同上
+    q = q.transpose(0,2,1,3)
+    k = k.transpose(0,2,1,3)
+    v = v.transpose(0,2,1,3)
     # print('q shape:', q.shape)
     # print('k shape:', k.shape)
     # print('v shape:', v.shape)
     # q,k,v的shape变为(16,2,11,200)
 
-    # 5.掩码处理
     # mask Dimensions: Batch*Length, head, 1, entity
-    ego_mask = jnp.ones(list(q.shape[:1]) + [1,1])    # 创建一个全为1的张量，形状为[batch_size,1,1]，作为ego的掩码。q.shape是一个包含q张量各个维度大小的元组(16,2,11,200) q.shape[:-1]表示从元组中获取第一个元素，结果是一个包含第一个元素的元组(16,) list(q.shape[:1])：[16]
-    vdi_mask = vdi_mask.reshape(-1, 1, vdi_num)       # 将vdi_mask的形状reshape成[-1,1,vdi_num]，-1表示自动计算该维度的大小，1表示在该维度上插入一个新维度，假设 vdi_mask 的形状为 (32, 10)，则新的vdi_mask的维度是(32, 1, vdi_num)
-    vpi_mask = vpi_mask.reshape(-1, 1, vpi_num) # 同上
+    ego_mask = jnp.ones(list(q.shape[:1]) + [1,1])
+    vdi_mask = vdi_mask.reshape(-1, 1, vdi_num)
+    vpi_mask = vpi_mask.reshape(-1, 1, vpi_num)
     mask = jnp.concatenate([ego_mask, vdi_mask, vpi_mask], axis=-1).reshape([-1, 1, 1, 1 + vdi_num + vpi_num])
-    # 将 ego_mask、vdi_mask 和 vpi_mask 在最后一个维度（axis=-1）上进行拼接。
-    # 然后重塑形状为[-1,1,1,11]
-    # 注意reshape(-1，1，1)和reshape([-1,1,1])的区别
     mask = jnp.repeat(mask, self._heads, axis=1)
-    
-    # 多头注意力值计算
+
     # TODO: the attention of ego and vdi can be get through 'different attention layers', 
     # since they do different tasks in latter parts(vdi for future prediction only and ego for actor/critic/reward/count)
     # we use different mlp head to get a different attention result for ego and vdi for now
@@ -643,8 +555,7 @@ class PredictAttention(nj.Module):
     # Dimensions(back to): Batch*Length, entity, head, feature_per_head
     self_attention_out = self_attention_out.transpose(0,2,1,3)
     self_attention_mat = self_attention_mat.transpose(0,2,1,3)
-    
-    # 输出处理
+
     self_attention_out_dict = {}
     self_attention_mat_dict = {}
     # for i in range(vdi_num + 1): # ego and vdi
@@ -839,83 +750,63 @@ class PredictionDecoder(nj.Module):
     raise NotImplementedError(self._image_dist)
 
 class PIWMMLP(nj.Module):
-  
-  # 初始化MLP参数
+
   # for modules like actor, critic, reward prediction, countinue prediction, we use ego's feature and ego-attention as input
   def __init__(
       self, shape, layers, units, inputs=['tensor'], dims=None, 
       symlog_inputs=False, **kw):
-    # **kw 其他关键字参数
 
     # data shape type transition
     assert shape is None or isinstance(shape, (int, tuple, dict)), shape
     if isinstance(shape, int):
-      shape = (shape,) # 将整数类型shape转换为元组
+      shape = (shape,)
 
     # network hyparameters
-    self._shape = shape   # 输出数据的形状，可以是整数、元组或字典
-    self._layers = layers # MLP的层数
-    self._units = units   # 每层的神经元数量
-    self._inputs = Input(inputs, dims=dims) # 输入类型，默认为['tensor']
-    self._symlog_inputs = symlog_inputs     # 是否对输入进行对称对数变换 False
+    self._shape = shape   
+    self._layers = layers 
+    self._units = units   
+    self._inputs = Input(inputs, dims=dims) 
+    self._symlog_inputs = symlog_inputs     
     # key words for dense layers and output(distribution) layers
     distkeys = (
         'dist', 'outscale', 'minstd', 'maxstd', 'outnorm', 'unimix', 'bins')
-    # 全连接层参数：
     self._dense = {k: v for k, v in kw.items() if k not in distkeys}
-    # 输出层参数：
     self._dist = {k: v for k, v in kw.items() if k in distkeys}
 
-  # 多层感知机的前向传播
   def __call__(self, feature_dict, attention, concat_feat=False): # feature_dict: {'ego': ego_features, 'vdi_1': vdi_1_features, ...}, attention_dict: {'ego': ego_attention_to_vpi, 'vdi_1': vdi_1_attention_to_vpi, ...}
-    # 1.数据预处理
     # preprocess feature inputs, only consider vehicle features
     feature_dict = {key: self._inputs(value) for key, value in feature_dict.items() if key.startswith(('ego', 'vdi_'))}
-    # 筛选feature_dict中以ego和vdi_开头的键值对，将其值转换为张量，返回处理后的新字典。
     print(feature_dict)
-    if self._symlog_inputs: # 判断是否进行对数变换
+    if self._symlog_inputs:
       feature_dict = {key: jaxutils.symlog(value) for key, value in feature_dict.items() if key.startswith(('ego', 'vdi_'))}
 
-    # 2.特征连接
     # TODO: concat vdi features or ego attention should be a hyparameter, yet concat should in distance order
-    if concat_feat: # concat ego and vdi features together  # 将ego和vdi特征连接在一起
+    if concat_feat: # concat ego and vdi features together  
       feat = jnp.concatenate(list(feature_dict.values()), axis=-1)
-    else: # use ego feature and its attention               # 不将ego和vdi特征连接在一起
+    else: # use ego feature and its attention
       if isinstance(attention, dict):
-        attention = attention['ego'] # 提取attention列表中'ego'的注意力值(并不是一个值)
-      feat = jnp.concatenate([feature_dict['ego'], attention], axis=-1) # 拼接ego特征和ego的注意力值，沿最后一个维度
-    x = jaxutils.cast_to_compute(feat) # 对feat特征进行类型转换
-
-    # 3.多层感知机的前向传播,特征提取，全连接层
+        attention = attention['ego']
+      feat = jnp.concatenate([feature_dict['ego'], attention], axis=-1)
+    x = jaxutils.cast_to_compute(feat)
+ 
     # after concat, pass the features through mlp layer
-    x = x.reshape([-1, x.shape[-1]])# 展平输入的形状：x.shape[-1]表示保持最后一个维度的值不变，-1表示自动计算其他维度的数值。比如：原始输入是(32,10,256)，那么x = x.reshape([-1,256])的输出是(320,256)
-    for i in range(self._layers):# 遍历MLP每一层
+    x = x.reshape([-1, x.shape[-1]])
+    for i in range(self._layers):
       x = self.get(f'h{i}', Linear, self._units, **self._dense)(x)
-      # f'h{i}' 是该层的名称，‘h{0},h{1}’
-      # Linear  是该层的类型，(线性层)
-      # self._units是该层的输出维度(神经元数量)
-      # **self._dense：解引用全连接层的参数，比如激活函数
-      # self.get()函数首先判断名为'h{i}'的线性层是否已经存在，如果不存在则创建一个新的Linear层，参数为self._units和self._dense。
-      # 其返回值为一个配置好的线性层对象，这个对象包含:权重矩阵、偏置、激活函数等参数。
-      # 然后用这样一个线性层对象处理x的输入，进行前向计算得到输出x。
     x = x.reshape(feat.shape[:-1] + (x.shape[-1],))
-    # feat.shape[:-1] 表示保持原始输入feat的所有维度除了最后一个维度，
-    # x.shape[-1] 表示经过MLP处理后的特征维度(神经元数量)，x为输入经过所有线性层的输出，而输出的最后一个维度是self._units。 (线性层输出的最后一个维度是self._units，所以x.shape[-1] = self._units）
-    # 最终这句话使得e多层线性变换后的形状没变，只有最后一个维度的值改变了。
 
-    # 4.多层感知机的前向传播，输出层
     # output mlp layer, different kinds of outputs
     if self._shape is None:
-      return x # 直接返回特征
+      return x
     elif isinstance(self._shape, tuple):
-      return self._out('out', self._shape, x) # 根据self._dist参数生成单个概率分布输出 #调用_out()函数，‘out’赋给name，self._shape赋给shape，x赋给x。进一步调用self.get，原理同上
+      return self._out('out', self._shape, x)
     elif isinstance(self._shape, dict):
-      return {k: self._out(k, v, x) for k, v in self._shape.items()} # 生成多个命名的概率分布输出
+      return {k: self._out(k, v, x) for k, v in self._shape.items()}
     else:
       raise ValueError(self._shape)
 
   def _out(self, name, shape, x):
-    return self.get(f'dist_{name}', Dist, shape, **self._dist)(x)  # 将x转换为不同的概率分布
+    return self.get(f'dist_{name}', Dist, shape, **self._dist)(x)
 
 
 class MLP(nj.Module):
@@ -924,7 +815,7 @@ class MLP(nj.Module):
       self, shape, layers, units, inputs=['tensor'], dims=None,
       symlog_inputs=False, **kw):
     # data shape type transition
-    assert shape is None or isinstance(shape, (int, tuple, dict)), shape # 断言语句，判断shape是否为None或者int或tuple或dict之一，不是就报错
+    assert shape is None or isinstance(shape, (int, tuple, dict)), shape
     if isinstance(shape, int):
       shape = (shape,)
     # network hyparameters

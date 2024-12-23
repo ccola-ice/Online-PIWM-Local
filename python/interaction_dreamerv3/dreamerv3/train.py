@@ -33,7 +33,6 @@ def main(argv=None):
   with open(config_path, 'r') as file:
     config = yaml.safe_load(file)
 
-  # 从configs.yaml文件中获取vdi_num和vpi_num的值
   vdi_num   = config['interaction_prediction']['env']['interaction']['vdi_num']
   vpi_num   = config['interaction_prediction']['env']['interaction']['vpi_num']
 
@@ -46,26 +45,18 @@ def main(argv=None):
   args = embodied.Config(
       **config.run, logdir=config.logdir, 
       batch_steps=config.batch_size * config.batch_length)
-  
-  #print("config2:",config) 
-  print("vdi_num",vdi_num)
-  print("vpi_num",vpi_num)
 
-  # 生成encoder的mlp_keys列表
   encoder_mlp_keys = ['ego'] + \
       [f'vdi_{i}' for i in range(1, vdi_num + 1)] + \
       [f'vpi_{i}' for i in range(1, vpi_num + 1)]
-  # 生成decoder的mlp_keys列表
   decoder_mlp_keys = ['ego_prediction'] + \
       [f'vdi_{i}_prediction' for i in range(1, vdi_num + 1)]
-  # 更新到config中
+  
   config = config.update({
     'encoder': {'mlp_keys': encoder_mlp_keys},
     'decoder': {'mlp_keys': decoder_mlp_keys},
   })
 
-  #print("config3:",config) 
- 
   logdir = embodied.Path(args.logdir)
   logdir.mkdirs()
   config.save(logdir / 'config.yaml')
@@ -77,14 +68,13 @@ def main(argv=None):
     if args.script == 'train' and config.task.startswith('interaction'):
       # change replay from v3 version (save as chunks) to v2 version (save as episodes, which can be used to make prediction data)
       if args.replay_style == 'chunk':
-        replay = make_replay(config, logdir / 'replay') # 初始化replay_buffer
+        replay = make_replay(config, logdir / 'replay')
       elif args.replay_style == 'ep':
-        replay = make_replay_ep(config, logdir / 'replay') # ep方式初始化replay_buffer
-
-      env = make_envs(config) ## 返回的env为：BatchEnv(len=1, obs_space={'ego': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'ego_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_1_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_2_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_3_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_4_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'vdi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vdi_5_prediction': Space(dtype=float64, shape=(20, 2), low=-inf, high=inf), 'id_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'mask_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_vdi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'vpi_1': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_2': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_3': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_4': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'vpi_5': Space(dtype=float64, shape=(19, 5), low=-inf, high=inf), 'mask_vpi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'should_init_vpi': Space(dtype=int32, shape=(5,), low=-2147483648, high=2147483647), 'reward': Space(dtype=float32, shape=(), low=-inf, high=inf), 'is_first': Space(dtype=bool, shape=(), low=False, high=True), 'is_last': Space(dtype=bool, shape=(), low=False, high=True), 'is_terminal': Space(dtype=bool, shape=(), low=False, high=True), 'sta_speed': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_collision': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_success': Space(dtype=int32, shape=(), low=-2147483648, high=2147483647), 'sta_complet': Space(dtype=float32, shape=(1,), low=-inf, high=inf), 'sta_gt_distance': Space(dtype=float32, shape=(1,), low=-inf, high=inf)}, act_space={'action': Space(dtype=float32, shape=(4,), low=0, high=1)})
-      cleanup.append(env)     ## 将env加入cleanup列表
-      agent = agt.Agent(env.obs_space, env.act_space, step, config) # 设置agent
-      embodied.run.train(agent, env, replay, logger, args) # 开始训练
+        replay = make_replay_ep(config, logdir / 'replay')
+      env = make_envs(config) 
+      cleanup.append(env)
+      agent = agt.Agent(env.obs_space, env.act_space, step, config)
+      embodied.run.train(agent, env, replay, logger, args)
 
     elif args.script == 'eval_only' and config.task.startswith('interaction'):
       # env is set to eval mode, every vehilce has the same oppotunity to be selected
@@ -183,14 +173,14 @@ def make_replay(
     config, directory=None, is_eval=False, rate_limit=False, **kwargs):
   assert config.replay == 'uniform' or not rate_limit
   # set replay size
-  length = config.batch_length # 64 by default
+  length = config.batch_length
   size = config.replay_size // 10 if is_eval else config.replay_size # 1e6/2e6 or 1e5/2e5 by default
-  if config.replay == 'uniform' or is_eval: # 'uniform' replay by default
-    kw = {'online': config.replay_online} # replay_online = False by default
-    if rate_limit and config.run.train_ratio > 0: # rate_limit is False by default
-      kw['samples_per_insert'] = config.run.train_ratio / config.batch_length # 32 / 64 by default
-      kw['tolerance'] = 10 * config.batch_size # 10 * 16
-      kw['min_size'] = config.batch_size # 16 by default
+  if config.replay == 'uniform' or is_eval:
+    kw = {'online': config.replay_online}
+    if rate_limit and config.run.train_ratio > 0:
+      kw['samples_per_insert'] = config.run.train_ratio / config.batch_length
+      kw['tolerance'] = 10 * config.batch_size
+      kw['min_size'] = config.batch_size
     replay = embodied.replay.Uniform(length, size, directory, **kw)
   elif config.replay == 'reverb':
     replay = embodied.replay.Reverb(length, size, directory)
@@ -204,13 +194,13 @@ def make_replay(
 def make_replay_ep(
     config, directory=None, is_eval=False, rate_limit=False):
   
-  assert config.replay == 'uniform' or not rate_limit #初始条件下config.replay为uniform，rate_limit为False
+  assert config.replay == 'uniform' or not rate_limit
   # set replay size
-  length = config.batch_length # 50 by default
-  size = config.replay_size // 10 if is_eval else config.replay_size # 默认 size = config.replay_size = 2000000 # 1e6/2e6 or 1e5/2e5 by default
+  length = config.batch_length
+  size = config.replay_size // 10 if is_eval else config.replay_size
   
-  vdi_num = config.env.interaction.vdi_num # 5 by default 5个vdi
-  vpi_num = config.env.interaction.vpi_num # 5 by default 5个vpi
+  vdi_num = config.env.interaction.vdi_num
+  vpi_num = config.env.interaction.vpi_num
   predict_horizen = config.env.interaction.predict_horizen # 20 means 2s in 10hz for prediction task
 
   replay = embodied.replay.ReplayEp(directory, capacity=size, batch_size=config.batch_size, batch_length=length, vdi_num=vdi_num, vpi_num=vpi_num, predict_horizen=predict_horizen,
@@ -221,24 +211,24 @@ def make_replay_ep(
 
 def make_envs(config, **overrides):
   print("Overrides:", overrides)
-  suite, task = config.task.split('_', 1) # suite = interaction, task = prediction
-  ctors = [] # 存储构造函数的列表
-  for index in range(config.envs.amount): # config.envs.amount = 1 by default
-    ctor = lambda: make_env(config, **overrides) # 等价于直接执行make_env(config, **overrides)，返回一个env赋值给ctor
-    if config.envs.parallel != 'none': # parallel = none by default
-      ctor = bind(embodied.Parallel, ctor, config.envs.parallel) # 用embodied.Parallel包装ctor
-    if config.envs.restart: # config.envs.restart = True by default
-      ctor = bind(wrappers.RestartOnException, ctor) # 用wrappers.RestartOnException包装ctor 如果 ctor 在执行过程中抛出异常，wrappers.RestartOnException 会捕获该异常并重新调用 ctor
-    ctors.append(ctor) # 将包装好的ctor函数加入ctors列表的末尾
-  envs = [ctor() for ctor in ctors] # 用ctors列表中的每个ctor函数创建一个env，遍历ctors中的每个ctor函数，将每个ctor函数的结果/返回值存在envs列表中
-  return embodied.BatchEnv(suite, envs, parallel=(config.envs.parallel != 'none')) # 返回一个BatchEnv对象，该对象包含了envs列表中的所有env
+  suite, task = config.task.split('_', 1)
+  ctors = []
+  for index in range(config.envs.amount):
+    ctor = lambda: make_env(config, **overrides) 
+    if config.envs.parallel != 'none':
+      ctor = bind(embodied.Parallel, ctor, config.envs.parallel)
+    if config.envs.restart:
+      ctor = bind(wrappers.RestartOnException, ctor)
+    ctors.append(ctor)
+  envs = [ctor() for ctor in ctors]
+  return embodied.BatchEnv(suite, envs, parallel=(config.envs.parallel != 'none'))
 
 
 def make_env(config, **overrides):
   # You can add custom environments by creating and returning the environment
   # instance here. Environments with different interfaces can be converted
   # using `embodied.envs.from_gym.FromGym` and `embodied.envs.from_dm.FromDM`.
-  suite, task = config.task.split('_', 1) # suite = interaction, task = prediction
+  suite, task = config.task.split('_', 1)
   ctor = {
       'dummy': 'embodied.envs.dummy:Dummy',
       'gym': 'embodied.envs.from_gym:FromGym',
@@ -251,38 +241,35 @@ def make_env(config, **overrides):
       'loconav': 'embodied.envs.loconav:LocoNav',
       'pinpad': 'embodied.envs.pinpad:PinPad',
       'interaction': 'embodied.envs.interaction:Interaction',
-  }[suite] # 根据 suite 变量的值获取对应的构造函数路径 ctor = embodied.envs.interaction:Interaction 
-           # 即ctor最终为embodied.envs.interaction模块中的Interaction类
-  if isinstance(ctor, str): # 如果ctor是一个字符串
-    module, cls = ctor.split(':') # module = embodied.envs.interaction, cls = Interaction 将ctor字符串按照':'分割，分别赋值给module和cls 
-    module = importlib.import_module(module) #导入embodied.envs.interaction模块，赋值给module，即module = embodied.envs.interaction
-    ctor = getattr(module, cls) # 获取module模块中的cls类，赋值给ctor，即ctor = embodied.envs.interaction.Interaction类 
-  kwargs = config.env.get(suite, {}) # 从 config.env 字典中获取与 suite 相关的配置参数，并将其赋值给 kwargs 变量。如果 suite 不在 config.env 中，则返回一个空字典。 kwargs = config.env['interaction'] = {}
-  # print(kwargs)
-  kwargs.update(overrides) # 将overrides字典中的键值对更新到kwargs字典中
-  env = ctor(task, kwargs) if suite == 'interaction' else ctor(task, **kwargs) # env = embodied.envs.interaction.Interaction(task, kwargs)   # task = prediction, kwargs = overrides = config = {config.yaml}
+  }[suite]
+  
+  if isinstance(ctor, str):
+    module, cls = ctor.split(':')
+    module = importlib.import_module(module)
+    ctor = getattr(module, cls)
+  kwargs = config.env.get(suite, {})
+  kwargs.update(overrides)
+  env = ctor(task, kwargs) if suite == 'interaction' else ctor(task, **kwargs)
   return wrap_env(env, config) 
 
-#
 def wrap_env(env, config):
-  args = config.wrapper # wrapper: {checks: false, discretize: 0, length: 0, reset: true} by default
-  for name, space in env.act_space.items(): # env.act_space = {'acion': Space(dtype=int32, shape=(), low=0, high=4)} by default
-  #遍历env.act_space字典的所有项，name为键，space为值
+  args = config.wrapper
+  for name, space in env.act_space.items():
     if name == 'reset':
       continue
-    elif space.discrete: # space.discrete = True by default
-      env = wrappers.OneHotAction(env, name) # env就为传入的env参数，name = 'action'，即env = wrappers.OneHotAction(env, 'action')
-    elif args.discretize: # args.discretize = 0 by default
+    elif space.discrete:
+      env = wrappers.OneHotAction(env, name)
+    elif args.discretize:
       env = wrappers.DiscretizeAction(env, name, args.discretize)
     else:
       env = wrappers.NormalizeAction(env, name)
-  env = wrappers.ExpandScalars(env) # 
-  if args.length: # args.length = 0 by default
+  env = wrappers.ExpandScalars(env)
+  if args.length:
     env = wrappers.TimeLimit(env, args.length, args.reset)
-  if args.checks: # args.checks = False by default
+  if args.checks:
     env = wrappers.CheckSpaces(env)
-  for name, space in env.act_space.items(): # env.act_space = {'acion': Space(dtype=int32, shape=(), low=0, high=4)} by default
-    if not space.discrete: # space.discrete = True by default
+  for name, space in env.act_space.items():
+    if not space.discrete:
       env = wrappers.ClipAction(env, name)
   return env
 

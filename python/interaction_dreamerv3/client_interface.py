@@ -17,7 +17,6 @@ sys.path.append(str(directory.parent.parent))
 sys.path.append(str(directory.parent.parent.parent))
 __package__ = directory.name
 
-#将字典转换为对象
 class Dict2Class(object):
 
     def __init__(self, dict):
@@ -28,7 +27,7 @@ class ClientInterface(object):
 
     def __init__(self, args, record=True):
         # env args
-        self.args = Dict2Class(args) if isinstance(args, dict) else args # self.args.xxx访问
+        self.args = Dict2Class(args) if isinstance(args, dict) else args
         self.discrete_action_num = 4
         self.action_space = gym.spaces.Discrete(self.discrete_action_num)
 
@@ -36,7 +35,7 @@ class ClientInterface(object):
         self._context = zmq.Context()
         self._socket = self._context.socket(zmq.REQ)
         print("connecting to interaction gym...")
-        url = ':'.join(["tcp://localhost", str(self.args.port)]) # "tcp://localhost:5561”
+        url = ':'.join(["tcp://localhost", str(self.args.port)])
         self._socket.connect(url)
         
         # simulator statue flags
@@ -56,12 +55,10 @@ class ClientInterface(object):
         # record prediction data if possible to calculate ade
         self.prediction_data_dict = dict()
         self._prediction_filename = "prediction " + time_string + '.pkl'
-            
-        # .pkl文件目录
+
         save_dir = 'pkl_data'
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
-        # 更新.pkl文件目录
         self._run_filename = os.path.join(save_dir, "run " + time_string + '.pkl')
         self._prediction_filename = os.path.join(save_dir, "prediction " + time_string + '.pkl')
 
@@ -86,7 +83,6 @@ class ClientInterface(object):
         # send to env
         # for simple react scenarios, the track file is fixed
         message_send = {'command': 'track_init'}
-        # client发送message
         self._socket.send_string(str(message_send))
         # recieve from env
         message_recv = self._socket.recv()

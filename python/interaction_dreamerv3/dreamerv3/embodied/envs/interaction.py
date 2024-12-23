@@ -11,13 +11,13 @@ from interaction_dreamerv3.client_interface import ClientInterface
 class Interaction(embodied.Env):
   
   def __init__(self, task, args):
-    self._task = task # 'prediction', 'branch', 'recon'
-    self._args = args # kwargs
-    self._env = ClientInterface(self._args) # self._env.args=xxx, self._env.discrete_action_num=4,self._env.xxx=xxx......
+    self._task = task
+    self._args = args
+    self._env = ClientInterface(self._args)
     self._done = True
     print('Set I-SIM env successfully!')
 
-  @property # @property可以使 Interaction.obs_space,不用加括号
+  @property
   def obs_space(self):
     # for prediction decode target, needs to separate different vehicles and predict each of them
     if self._task == 'prediction':
@@ -31,7 +31,6 @@ class Interaction(embodied.Env):
       for i in range(self._args['vdi_num']):
         obs_space[f'vdi_{i+1}'] = embodied.Space(np.float64, (19, 5))
         obs_space[f'vdi_{i+1}_prediction'] = embodied.Space(np.float64, (self._args['predict_horizen'], 2))
-        # obs_space[f'vdi_{i+1}_map'] = embodied.Space(np.float64, shape)
       obs_space.update({
                         'id_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
                         'mask_vdi': embodied.Space(np.int32, (self._args['vdi_num'])),
@@ -187,8 +186,7 @@ class Interaction(embodied.Env):
         'sta_gt_distance': 0,
       })
       return obs
-    
-    # 步进更新isim环境
+
     # step the environment
     # TODO: consider multiple ego vehicles
     action_dict = {self._env.ego_id_list[0]: [action['action']]}
