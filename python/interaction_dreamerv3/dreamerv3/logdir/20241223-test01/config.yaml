@@ -123,7 +123,7 @@ env:
     loader_type: small_scale, map_name: DR_USA_Intersection_EP0, max_steps: None,
     only_trouble: false, port: 5561, predict_horizen: 20, route_bound_visualization: false,
     route_type: ground_truth, route_visualization: true, state_frame: global, vdi_num: 5,
-    vdi_type: record, visualization: false, vpi_num: 5}
+    vdi_type: record, visualization: true, vpi_num: 5}
   loconav:
     camera: -1
     repeat: 2
@@ -188,7 +188,8 @@ run:
   eval_initial: true
   eval_samples: 1
   expl_until: 0
-  from_checkpoint: ''
+  from_checkpoint: 
+    /home/zb/PIWM/python/interaction_dreamerv3/dreamerv3/logdir/20241223-test01/checkpoint_500k.ckpt
   log_every: 1000
   log_keys_max: ^$
   log_keys_mean: (log_entropy)
@@ -197,7 +198,7 @@ run:
   log_zeros: false
   replay_style: ep
   save_every: 900
-  script: train
+  script: eval_only
   steps: 510000.0
   sync_every: 10
   train_fill: 0

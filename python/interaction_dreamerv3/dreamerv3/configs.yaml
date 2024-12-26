@@ -117,12 +117,19 @@ interaction_prediction:
     prealloc: False
   run:
     replay_style: ep
-    # script: eval_only
-    script: train 
+    script: eval_only
+    # script: train 
     steps: 5.1e5 # 10.1e5
     eval_every: 5e8
     log_every: 1000
     
+    # 2024.12.23.14.40：small_scale_dataset test
+    # from_checkpoint: /home/zb/PIWM/python/interaction_dreamerv3/dreamerv3/logdir/20241223-test01/checkpoint_500k.ckpt
+
+    # 2024.12.25.09.39：large_scale_dataset test
+    from_checkpoint: /home/zb/PIWM/python/interaction_dreamerv3/dreamerv3/logdir/20241224-test01/checkpoint_500k.ckpt
+
+
     # from_checkpoint: /home/gdg/NewDisc/MyPaperResources/[T-IV]Dream_to_Drive_with_PIWM/paper_models/comparison/small_set/PIM/8.21_paper_3/checkpoint_500k.ckpt
     
     #2024.10.17 19.23:
@@ -133,7 +140,7 @@ interaction_prediction:
     # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/predict/12.23_7action_1raccweight_4/checkpoint_500k.ckpt
     # from_checkpoint: /home/gdg/InteractionRL/Dreamer_Inter/python/logdir/isim_intersection/dreamerv3/3.28_vdi:vpi=9:1_5/checkpoint_500k.ckpt
   env:
-    interaction: {port: 5561, state_frame: global, vdi_type: record, loader_type: small_scale, vdi_num: 5, vpi_num: 5, decoder_target: predict, predict_horizen: 20, visualization: False, ghost_visualization: True}   
+    interaction: {port: 5561, state_frame: global, vdi_type: record, loader_type: large_scale, vdi_num: 4, vpi_num: 4, decoder_target: predict, predict_horizen: 20, visualization: False, ghost_visualization: True}   
     # 8888 loader_type: prediction、visualization: True
   replay_size: 2e6
 
