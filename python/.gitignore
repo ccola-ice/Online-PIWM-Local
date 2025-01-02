@@ -8,4 +8,5 @@ MUJOCO_LOG.TXT
 *.ckpt
 *.pyc
 *.png
+*.0.v2
 ;
