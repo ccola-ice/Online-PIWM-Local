@@ -7,6 +7,5 @@ MUJOCO_LOG.TXT
 *.npz
 *.ckpt
 *.pyc
-*.png
 *.0.v2
 ;

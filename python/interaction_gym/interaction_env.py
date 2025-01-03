@@ -48,6 +48,9 @@ class InteractionEnv:
         self._ghost_visualization = settings['ghost_visualization']
         self._route_visualization = settings['route_visualization']
         self._route_bound_visualization = settings['route_bound_visualization']
+        
+        self._vdi_num = settings['vdi_num']
+
         # eval mode
         self._eval = settings['eval']
         

@@ -1,3 +1,4 @@
+#-*- coding: UTF-8 -*- 
 import matplotlib
 from matplotlib.patches import Polygon, Circle
 from matplotlib.collections import PatchCollection
@@ -168,17 +169,13 @@ def draw_controlled_vehicles(motionstate_dict, polygon_dict, patch_dict, text_di
             text_dict[v_id].set_position((motionstate_dict[v_id].x, motionstate_dict[v_id].y + 2))
 
 
-def draw_uncontrolled_vehicle(motionstate_dict, polygon_dict, patch_dict, text_dict, grid_axes, vector_axes, surrounding_vehicle_id_list):
-    
-    with open('configs.yaml', 'r') as file:
-        config = yaml.safe_load(file)
-    vdi_num = config['interaction_prediction']['vdi_num']
+def draw_uncontrolled_vehicle(motionstate_dict, polygon_dict, patch_dict, text_dict, grid_axes, vector_axes, surrounding_vehicle_id_list, settings):
+
+    vdi_num = settings['vdi_num']
 
     for v_id in motionstate_dict.keys():
-        # color, yellow for surrounding otherwise blue
-        # TODO: a proper way to set colors
         if v_id in surrounding_vehicle_id_list:
-            color = 'purple' if v_id in surrounding_vehicle_id_list[:vdi_num] else 'cyan'
+            color = 'orange' if v_id in surrounding_vehicle_id_list[:vdi_num] else 'y'
         else:
             color = 'b'
         # draw uncotrolled vehicles
