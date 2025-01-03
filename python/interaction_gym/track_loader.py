@@ -203,10 +203,7 @@ class Small_scale_dataset_loader():
             track_dict = read_tracks(track_file_path)
             # if self._load_mode == 'both' or self._load_mode == 'pedestrian':
             #     self._pedestrian_dict = read_pedestrian(self._pedestrian_file_name)
-        
-        print("vdi_type",vdi_type)
-        print("route_type",route_type)
-        print("in read_track_file_def, track_file_path: ", track_file_path) # /home/developer/workspace/interaction_gym/dataset/recorded_trackfiles/DR_USA_Intersection_EP0/vehicle_tracks_005.csv
+
         return track_dict
 
     def select_ego(self):
